@@ -1,0 +1,8 @@
+<resources>
+    <style name="Theme.Tanuki" parent="android:style/Theme.Material.NoActionBar">
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+        <item name="android:windowBackground">#12141A</item>
+        <item name="android:forceDarkAllowed">false</item>
+    </style>
+</resources>

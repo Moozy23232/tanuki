@@ -1,0 +1,7 @@
+<resources>
+    <!-- WebView derives prefers-color-scheme from the platform Activity theme. -->
+    <style name="Theme.Tanuki" parent="android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowBackground">#F6F7FB</item>
+    </style>
+</resources>

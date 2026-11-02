@@ -1,0 +1,516 @@
+package com.tanuki
+
+import android.content.Intent
+import android.content.res.Configuration
+import android.graphics.Bitmap
+import android.graphics.Rect
+import android.os.SystemClock
+import android.view.ContextThemeWrapper
+import android.view.View
+import android.view.ViewGroup
+import android.view.accessibility.AccessibilityNodeInfo
+import android.webkit.WebView
+import androidx.activity.compose.setContent
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.Surface
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
+import androidx.test.platform.app.InstrumentationRegistry
+import androidx.webkit.WebSettingsCompat
+import androidx.webkit.WebViewFeature
+import com.tanuki.runtime.*
+import com.tanuki.storage.WorkspaceStorageState
+import com.tanuki.ui.TanukiTheme
+import com.tanuki.ui.TanukiUi
+import com.tanuki.ui.TanukiUiCallbacks
+import com.tanuki.ui.TanukiUiModel
+import com.tanuki.update.Release
+import com.tanuki.web.DshWebView
+import com.tanuki.web.WebViewSupport
+import com.tanuki.web.WebViewSupportState
+import org.json.JSONObject
+import org.json.JSONTokener
+import org.junit.Assert.*
+import org.junit.Test
+import java.io.File
+import java.util.ArrayDeque
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+
+/** Fixture-only: inventory/model/callbacks. Actual: MainActivity DshWebView, inline HTML, fullscreen, screenshots, Theme.Tanuki. */
+class SetupPresentationTest {
+    private val instrumentation get() = InstrumentationRegistry.getInstrumentation()
+    private val context get() = instrumentation.targetContext
+    private fun requireIsolation() = check(context.packageName.endsWith(".workspacecheck")) {
+        "Use scripts/workspace-verification.init.gradle for UI test isolation"
+    }
+    private fun launch() = requireIsolation().let {
+        instrumentation.startActivitySync(Intent(context, MainActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)) as MainActivity
+    }
+    private fun browserOf(activity: MainActivity): DshWebView =
+        MainActivity::class.java.getDeclaredField("browser").apply { isAccessible = true }.get(activity) as DshWebView
+    private fun cancelSourceTests() {
+        runCatching { (context.applicationContext as TanukiApp).runtime.components.sourceTests.values.forEach { it.cancel() } }
+    }
+    private fun cleanup(activity: MainActivity) {
+        cancelSourceTests(); runCatching { instrumentation.runOnMainSync { activity.finish() } }; SystemClock.sleep(200)
+    }
+
+    private fun nodes(): List<AccessibilityNodeInfo> {
+        val root = instrumentation.uiAutomation.rootInActiveWindow ?: return emptyList()
+        if (root.packageName?.toString() != context.packageName) return emptyList()
+        val all = ArrayList<AccessibilityNodeInfo>(); val pending = ArrayDeque<AccessibilityNodeInfo>(); pending.add(root)
+        while (pending.isNotEmpty() && all.size < 1000) {
+            val node = pending.removeFirst()
+            if (!node.refresh()) continue
+            all.add(node)
+            for (i in 0 until node.childCount) node.getChild(i)?.let(pending::addLast)
+        }
+        return all
+    }
+    private fun matches(node: AccessibilityNodeInfo, text: String) =
+        node.text?.toString() == text || node.contentDescription?.toString() == text
+    private fun find(text: String): AccessibilityNodeInfo {
+        repeat(35) {
+            val current = nodes()
+            current.firstOrNull { matches(it, text) && it.isVisibleToUser }?.let { return it }
+            current.firstOrNull { matches(it, text) }?.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SHOW_ON_SCREEN.id)
+            current.firstOrNull { it.isScrollable && it.actionList.any { a -> a.id == AccessibilityNodeInfo.ACTION_SCROLL_FORWARD } }
+                ?.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)
+            SystemClock.sleep(120)
+        }
+        throw AssertionError("Visible control not found: $text")
+    }
+    private fun click(text: String) {
+        find(text)
+        repeat(8) {
+            instrumentation.waitForIdleSync()
+            for (candidate in nodes().filter { matches(it, text) && it.isVisibleToUser }.asReversed()) {
+                var node: AccessibilityNodeInfo? = candidate
+                while (node != null && !node.isClickable) node = node.parent
+                if (node?.isEnabled == true && node.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
+                    SystemClock.sleep(200)
+                    return
+                }
+            }
+            SystemClock.sleep(120)
+        }
+        screenshot("setup-control-failure.png").recycle()
+        File(context.cacheDir,"setup-control-failure-tree.txt").writeText(nodes().joinToString("\n") {
+            val bounds=Rect().also(it::getBoundsInScreen)
+            "${it.text} ${it.contentDescription} clickable=${it.isClickable} enabled=${it.isEnabled} visible=${it.isVisibleToUser} bounds=$bounds"
+        })
+        error("Control did not accept click: $text")
+    }
+    private fun tap(text: String) = click(text)
+
+    private fun screenshot(name: String): Bitmap {
+        val image = instrumentation.uiAutomation.takeScreenshot() ?: error("screenshot unavailable")
+        File(context.cacheDir, name).outputStream().use { check(image.compress(Bitmap.CompressFormat.PNG, 100, it)) }
+        return image
+    }
+    private fun differ(a: Bitmap, b: Bitmap): Boolean {
+        if (a.width != b.width || a.height != b.height) return true
+        var changed = 0
+        for (x in 0 until a.width step 40) for (y in 0 until a.height step 40) if (a.getPixel(x, y) != b.getPixel(x, y)) changed++
+        return changed > 10
+    }
+    private fun hasMultipleColors(image: Bitmap, bounds: Rect): Boolean {
+        val left = bounds.left.coerceIn(0, image.width - 1); val top = bounds.top.coerceIn(0, image.height - 1)
+        val right = bounds.right.coerceIn(left + 1, image.width); val bottom = bounds.bottom.coerceIn(top + 1, image.height)
+        val colors = HashSet<Int>()
+        for (x in 0..20) for (y in 0..20) colors += image.getPixel(left + (right - left - 1) * x / 20, top + (bottom - top - 1) * y / 20)
+        return colors.size > 1
+    }
+    private fun boundsOf(view: View): Rect {
+        val location = IntArray(2); view.getLocationOnScreen(location)
+        return Rect(location[0], location[1], location[0] + view.width, location[1] + view.height)
+    }
+    private fun isNight(config: Configuration) =
+        (config.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
+
+    private fun mount(activity: MainActivity, state: MutableState<TanukiUiModel>, rec: Recorder,
+                      browser: WebView, night: Boolean, fontScale: Float) {
+        val config = Configuration(activity.resources.configuration).apply {
+            uiMode = (uiMode and Configuration.UI_MODE_NIGHT_MASK.inv()) or
+                (if (night) Configuration.UI_MODE_NIGHT_YES else Configuration.UI_MODE_NIGHT_NO)
+        }
+        val density = activity.resources.displayMetrics.density
+        instrumentation.runOnMainSync {
+            (browser.parent as? ViewGroup)?.removeView(browser)
+            activity.setContent {
+                CompositionLocalProvider(LocalConfiguration provides config, LocalDensity provides Density(density, fontScale)) {
+                    TanukiTheme { Surface(Modifier.fillMaxSize()) {
+                        val cb = remember { callbacks(state, rec, activity) }
+                        TanukiUi(state.value, cb, browser)
+                    } }
+                }
+            }
+        }
+        instrumentation.waitForIdleSync(); SystemClock.sleep(400)
+    }
+
+    private fun callbacks(state: MutableState<TanukiUiModel>, rec: Recorder, activity: MainActivity,
+                          windowMode: com.tanuki.ui.DshWindowMode = com.tanuki.ui.DshWindowMode(activity.window)) = TanukiUiCallbacks(
+        command = { rec.commands += it }, install = { rec.installs += it }, checkUpdates = {}, importFiles = {},
+        measureStorage = {}, toggleLegacy = {}, toggleBlob = {}, showNotices = {}, updateWebView = {},
+        webViewSettings = {}, appSettings = {}, notifications = {}, connectDsh = {},
+        selectSource = { component, id ->
+            rec.sourceSelections += component to id
+            if (component == RuntimeComponent.UBUNTU) state.value = state.value.copy(
+                components = state.value.components.copy(ubuntuSource = id, ubuntuAutomatic = id == "auto"))
+            if (component == RuntimeComponent.NODE) state.value = state.value.copy(
+                components = state.value.components.copy(nodeSource = id, nodeAutomatic = id == "auto"))
+        },
+        selectVersion = { component, version ->
+            rec.versionSelections += component to version
+            if (component == RuntimeComponent.UBUNTU) state.value = state.value.copy(
+                components = state.value.components.copy(selectedUbuntuVersion = version))
+            if (component == RuntimeComponent.NODE) state.value = state.value.copy(
+                components = state.value.components.copy(selectedNodeVersion = version))
+        },
+        setFullscreen = { full -> rec.fullscreen += full; windowMode.setFullscreen(full) }, testSources = {}, cancelSourceTests = {},
+        refreshWorkspaceStorage = {}, saveWorkspaceCapacity = {}
+    )
+    private fun model(snapshot: Snapshot = Snapshot(), support: WebViewSupport = supported()) = TanukiUiModel(
+        snapshot = snapshot, support = support, versions = emptyList(), recentLogs = emptyList(), storageUsage = "fixture",
+        deviceInfo = "fixture", backgroundResult = null, legacyShim = false, blobExport = false, versionName = "fixture",
+        freeBytes = 0L, components = ComponentInventory(), ubuntuSources = UBUNTU_SOURCES, nodeSources = NODE_SOURCES,
+        ubuntuSpeed = SourceSpeedSnapshot(measuredAtMillis = 1L), nodeSpeed = SourceSpeedSnapshot(measuredAtMillis = 1L),
+        nodeRequirement = "", workspaceStorage = WorkspaceStorageState(), tools = RequiredToolsStatus())
+    private fun supported() = WebViewSupport(WebViewSupportState.SUPPORTED, "test", "130.0.0.0", true, true)
+    private fun runningSnapshot() = Snapshot(environment = EnvironmentState.READY, health = HealthState.HEALTHY,
+        service = ServiceState.RUNNING, web = WebState.CONNECTED, webHealthy = true, update = UpdateState.CURRENT)
+
+    private fun awaitProbe(browser: DshWebView) {
+        val deadline = System.currentTimeMillis() + 15_000
+        while (browser.support.value.state in setOf(WebViewSupportState.UNCHECKED, WebViewSupportState.CHECKING) &&
+            System.currentTimeMillis() < deadline) SystemClock.sleep(50)
+        val measured = browser.support.value
+        assertNotEquals("capability probe did not finish", WebViewSupportState.UNCHECKED, measured.state)
+        assertNotEquals("capability probe did not finish", WebViewSupportState.CHECKING, measured.state)
+        assertNotEquals("capability probe failed", WebViewSupportState.FAILED, measured.state)
+        assertNotNull(measured.subgrid); assertNotNull(measured.lightDark)
+    }
+
+    private fun eval(view: WebView, script: String): String? {
+        val latch = CountDownLatch(1); var result: String? = null
+        instrumentation.runOnMainSync { view.evaluateJavascript(script) { value -> result = value; latch.countDown() } }
+        return if (latch.await(5, TimeUnit.SECONDS)) result else null
+    }
+    private fun evalBoolean(view: WebView, expression: String): Boolean? = eval(view, expression)?.toBooleanStrictOrNull()
+    private fun evalString(view: WebView, expression: String): String? =
+        runCatching { JSONTokener(eval(view, expression) ?: return null).nextValue() as? String }.getOrNull()
+    private fun evalObject(view: WebView, expression: String): JSONObject? {
+        val raw = eval(view, "JSON.stringify($expression)") ?: return null
+        val inner = runCatching { JSONTokener(raw).nextValue() as? String }.getOrNull() ?: return null
+        return runCatching { JSONObject(inner) }.getOrNull()
+    }
+
+    private fun loadHtml(view: WebView, html: String, ready: String) {
+        instrumentation.runOnMainSync { view.loadDataWithBaseURL(BASE_URL, html, "text/html", "UTF-8", null) }
+        val deadline = System.currentTimeMillis() + 10_000
+        while (System.currentTimeMillis() < deadline) { if (evalBoolean(view, ready) == true) return; SystemClock.sleep(100) }
+        error("HTML did not load: $ready")
+    }
+    private data class Viewport(val w: Int, val h: Int, val marker: String, val timeOrigin: Double)
+    private fun viewport(view: WebView): Viewport? {
+        val obj = evalObject(view, "({w:document.documentElement.clientWidth,h:document.documentElement.clientHeight," +
+            "marker:window.__setupMarker,timeOrigin:performance.timeOrigin})") ?: return null
+        if (obj.optInt("w") <= 0 || obj.optInt("h") <= 0 || obj.optString("marker").isBlank()) return null
+        return Viewport(obj.getInt("w"), obj.getInt("h"), obj.getString("marker"), obj.getDouble("timeOrigin"))
+    }
+    private fun awaitViewport(view: WebView, until: (Viewport) -> Boolean = { true }): Viewport {
+        val deadline = System.currentTimeMillis() + 10_000
+        while (System.currentTimeMillis() < deadline) { viewport(view)?.let { if (until(it)) return it }; SystemClock.sleep(100) }
+        error("WebView viewport condition not met")
+    }
+    private fun attachedWebView(activity: MainActivity, expected: WebView): WebView? {
+        fun walk(view: View): WebView? {
+            if (view is WebView && view === expected) return view
+            if (view is ViewGroup) for (i in 0 until view.childCount) walk(view.getChildAt(i))?.let { return it }
+            return null
+        }
+        return walk(activity.window.decorView)
+    }
+    private fun awaitAttached(activity: MainActivity, web: WebView) {
+        val deadline = System.currentTimeMillis() + 5_000
+        while (System.currentTimeMillis() < deadline) { if (attachedWebView(activity, web) === web) return; SystemClock.sleep(100) }
+        error("actual WebView was not attached")
+    }
+    private fun createThemedWebView(dark: Boolean): WebView {
+        lateinit var view: WebView
+        instrumentation.runOnMainSync {
+            val config = Configuration(context.resources.configuration).apply {
+                uiMode = (uiMode and Configuration.UI_MODE_NIGHT_MASK.inv()) or
+                    (if (dark) Configuration.UI_MODE_NIGHT_YES else Configuration.UI_MODE_NIGHT_NO)
+            }
+            val wrapper = ContextThemeWrapper(context.createConfigurationContext(config), R.style.Theme_Tanuki)
+            view = WebView(wrapper).apply {
+                settings.javaScriptEnabled = true
+                if (WebViewFeature.isFeatureSupported(WebViewFeature.ALGORITHMIC_DARKENING))
+                    WebSettingsCompat.setAlgorithmicDarkeningAllowed(settings, false)
+                measure(View.MeasureSpec.makeMeasureSpec(1080, View.MeasureSpec.EXACTLY),
+                    View.MeasureSpec.makeMeasureSpec(1920, View.MeasureSpec.EXACTLY))
+                layout(0, 0, 1080, 1920)
+            }
+        }
+        return view
+    }
+
+    @Test fun setupGuideFirstStepSourceVersionAndLocalThemeScreenshots() {
+        val activity = launch(); cancelSourceTests()
+        val state = mutableStateOf(model()); val rec = Recorder()
+        val originalNight = isNight(activity.resources.configuration)
+        var light: Bitmap? = null; var dark: Bitmap? = null
+        try {
+            val browser = browserOf(activity)
+            mount(activity, state, rec, browser.view, night = false, fontScale = 1.3f)
+            find("第 1 步，Ubuntu"); tap("第 2 步，Node.js"); find("先完成 Ubuntu")
+            tap("第 3 步，基础工具"); find("先完成 Ubuntu")
+            assertTrue("previewing guide steps must not install", rec.installs.isEmpty())
+            assertTrue("previewing guide steps must not issue commands", rec.commands.isEmpty())
+            tap("第 1 步，Ubuntu")
+            click("查看测速与下载源"); click("使用清华 TUNA"); find("手动优先：清华 TUNA")
+            assertTrue(rec.sourceSelections.contains(RuntimeComponent.UBUNTU to "tuna"))
+            assertEquals("tuna", state.value.components.ubuntuSource)
+            click("Ubuntu 镜像：Ubuntu Base 24.04.5 LTS"); click("Ubuntu Base 26.04.1 LTS")
+            find("Ubuntu 镜像：Ubuntu Base 26.04.1 LTS")
+            assertTrue(rec.versionSelections.contains(RuntimeComponent.UBUNTU to "26.04.1"))
+            assertEquals("26.04.1", state.value.components.selectedUbuntuVersion)
+            val beforeDownload=state.value.snapshot
+            instrumentation.runOnMainSync {
+                state.value=state.value.copy(snapshot=beforeDownload.copy(environment=EnvironmentState.DOWNLOADING,
+                    stage="正在下载 Ubuntu",download=RuntimeDownloadProgress("ubuntu","测试源",2,10,1,false)))
+            }
+            tap("第 2 步，Node.js"); find("安装仍在继续")
+            assertTrue("step navigation must not cancel the running install",rec.commands.isEmpty())
+            tap("第 1 步，Ubuntu")
+            instrumentation.runOnMainSync { state.value=state.value.copy(snapshot=beforeDownload) }
+            light = run { SystemClock.sleep(300); screenshot("setup-guide-light-font130.png") }
+            mount(activity, state, rec, browser.view, night = true, fontScale = 1.3f)
+            find("手动优先：清华 TUNA"); find("Ubuntu 镜像：Ubuntu Base 26.04.1 LTS")
+            dark = run { SystemClock.sleep(300); screenshot("setup-guide-dark-font130.png") }
+            assertEquals("local night override must not mutate device/app configuration",
+                originalNight, isNight(activity.resources.configuration))
+            assertTrue("light and dark130% screenshots should differ", differ(light!!, dark!!))
+            click("查看测速与下载源"); click("恢复自动择优")
+            assertTrue("automatic selection can be restored",state.value.components.ubuntuAutomatic)
+        } finally { light?.recycle(); dark?.recycle(); cleanup(activity) }
+    }
+
+    private fun hasDocumentPixels(image: Bitmap, view: WebView): Boolean {
+        val r = boundsOf(view)
+        val counts = HashMap<Int, Int>()
+        // Exclude native toolbars and the floating exit button: they cannot prove web content painted.
+        val top = (r.top + r.height() / 5).coerceIn(0, image.height - 1)
+        val bottom = (r.bottom - r.height() / 5).coerceIn(top + 1, image.height)
+        for (x in r.left.coerceAtLeast(0) until r.right.coerceAtMost(image.width) step 8)
+            for (y in top until bottom step 8) {
+                val color = image.getPixel(x, y)
+                counts[color] = (counts[color] ?: 0) + 1
+            }
+        return counts.size >= 3 && counts.values.sum() - (counts.values.maxOrNull() ?: 0) > 80
+    }
+
+    @Test fun progressCoversSilentInstallStagesAndStaysVisibleAcrossPages() {
+        val activity = launch(); cancelSourceTests()
+        try {
+            val browser = browserOf(activity); awaitProbe(browser)
+            val now = SystemClock.elapsedRealtime()
+            val state = mutableStateOf(model(Snapshot(environment=EnvironmentState.INSTALLING, update=UpdateState.STAGING,
+                stage="解析 DSH 依赖", timing=OperationTiming(now-20_000,now))))
+            val rec = Recorder(); mount(activity,state,rec,browser.view,false,1f)
+            val stages = listOf(
+                Snapshot(update=UpdateState.CHECKING,stage="获取官方 DSH 版本列表"),
+                Snapshot(environment=EnvironmentState.CHECKING,stage="测速下载源"),
+                Snapshot(environment=EnvironmentState.DOWNLOADING,stage="下载 Ubuntu",download=RuntimeDownloadProgress("ubuntu","测试源",100,-1,0)),
+                Snapshot(environment=EnvironmentState.INSTALLING,stage="校验与解压 Node.js"),
+                Snapshot(environment=EnvironmentState.INSTALLING,update=UpdateState.STAGING,stage="解析 DSH 依赖"),
+                Snapshot(environment=EnvironmentState.INSTALLING,update=UpdateState.STAGING,stage="离线安装 DSH 依赖"),
+                Snapshot(environment=EnvironmentState.VERIFYING,stage="检测必要组件",phasePercent=35),
+                Snapshot(update=UpdateState.TESTING,stage="检查 DSH 候选启动"))
+            for (stage in stages) {
+                instrumentation.runOnMainSync { state.value=state.value.copy(snapshot=stage.copy(timing=OperationTiming(now-20_000,now))) }
+                find(stage.stage)
+                val bounds=Rect().also(find("操作进度")::getBoundsInScreen)
+                assertTrue("progress must stay above the page's scroll region: ${stage.stage}", bounds.height()>0 && bounds.top<activity.resources.displayMetrics.heightPixels/2)
+            }
+            click("浏览器"); find("操作进度")
+            click("文件"); find("操作进度")
+            click("设置"); find("操作进度")
+            click("查看进度"); click("取消当前操作")
+            assertEquals(listOf("CANCEL"),rec.commands)
+            click("收起")
+            instrumentation.runOnMainSync { state.value=state.value.copy(snapshot=Snapshot(environment=EnvironmentState.READY)) }
+            SystemClock.sleep(300)
+            assertFalse("completed operation must remove banner",nodes().any { matches(it,"操作进度") })
+        } finally { cleanup(activity) }
+    }
+
+    @Test fun progressShowsMeasuredBytesUnknownTransfersAndAdvancingElapsedTime() {
+        val activity=launch();cancelSourceTests()
+        try {
+            val browser=browserOf(activity);awaitProbe(browser)
+            val now=SystemClock.elapsedRealtime()
+            val state=mutableStateOf(model(Snapshot(environment=EnvironmentState.DOWNLOADING,stage="下载 Node.js",
+                download=RuntimeDownloadProgress("node","本地测试源",256,1024,64),timing=OperationTiming(now-5000,now))))
+            mount(activity,state,Recorder(),browser.view,false,1f)
+            assertEquals("当前阶段 25%",find("操作进度").stateDescription?.toString())
+            val before=nodes().first { it.text?.startsWith("已用 ")==true }.text.toString()
+            screenshot("progress-known-bytes.png").recycle()
+            SystemClock.sleep(1400)
+            val after=nodes().first { it.text?.startsWith("已用 ")==true }.text.toString()
+            assertNotEquals("clock must keep responding while bytes are unchanged",before,after)
+            instrumentation.runOnMainSync { state.value=state.value.copy(snapshot=Snapshot(environment=EnvironmentState.READY),
+                transfers=listOf(FileTransferProgress(1,"下载网页文件",2048,-1,OperationTiming(now,now)),
+                    FileTransferProgress(2,"准备网页 Blob 下载",0,-1,OperationTiming(now,now)))) }
+            find("下载网页文件");assertEquals("进行中，无法估算百分比",find("操作进度").stateDescription?.toString())
+            click("进度 · 2");find("准备网页 Blob 下载");find("已传输 2.0 KB · 总大小未知")
+            screenshot("progress-unknown-transfers.png").recycle()
+            click("收起")
+            instrumentation.runOnMainSync { state.value=state.value.copy(transfers=emptyList()) }
+            SystemClock.sleep(200);assertFalse(nodes().any { matches(it,"操作进度") })
+        } finally { cleanup(activity) }
+    }
+
+    @Test fun quietProgressWarnsWithoutPretendingSuccessAtDarkLargeFont() {
+        val activity=launch();cancelSourceTests()
+        try {
+            val browser=browserOf(activity);awaitProbe(browser)
+            val now=SystemClock.elapsedRealtime()
+            val state=mutableStateOf(model(Snapshot(environment=EnvironmentState.INSTALLING,update=UpdateState.STAGING,
+                stage="解析 DSH 依赖",timing=OperationTiming(now-180_000,now-90_000))))
+            mount(activity,state,Recorder(),browser.view,true,2f)
+            find("操作进度");find("查看进度")
+            assertTrue(nodes().any { it.text?.contains("没有新进展")==true })
+            screenshot("progress-quiet-dark-font200.png").recycle()
+            click("查看进度")
+            assertTrue(nodes().any { it.text?.contains("计时和动效不代表后台一定正常")==true })
+            click("收起")
+        } finally { cleanup(activity) }
+    }
+
+    @Test fun installedOfficialDshPageSurvivesRealSystemBarFullscreen() {
+        val runtime=(context.applicationContext as TanukiApp).runtime
+        org.junit.Assume.assumeTrue("Requires an existing isolated DSH installation; never downloads or calls a model",runtime.components.state.value.dshInstalled)
+        val startedByTest=runtime.state.value.service!=ServiceState.RUNNING
+        val activity=launch();cancelSourceTests()
+        try {
+            if(startedByTest)runtime.start()
+            val deadline=SystemClock.elapsedRealtime()+180_000
+            while(runtime.state.value.service!=ServiceState.RUNNING && SystemClock.elapsedRealtime()<deadline)SystemClock.sleep(200)
+            assertEquals(ServiceState.RUNNING,runtime.state.value.service)
+            click("DSH")
+            val browser=browserOf(activity);val web=browser.view
+            while(SystemClock.elapsedRealtime()<deadline && evalBoolean(web,"document.readyState==='complete' && location.protocol==='http:' && document.body.innerText.length>20")!=true)SystemClock.sleep(200)
+            assertEquals(true,evalBoolean(web,"document.readyState==='complete' && location.protocol==='http:' && document.body.innerText.length>20"))
+            eval(web,"window.__setupMarker='official-fullscreen-regression'")
+            val before=awaitViewport(web)
+            repeat(3) { cycle ->
+                click("进入全屏");find("退出全屏")
+                val full=awaitViewport(web) { it.h>before.h }
+                assertEquals(before.timeOrigin,full.timeOrigin,0.0)
+                assertEquals(before.marker,full.marker)
+                SystemClock.sleep(500)
+                assertEquals("fullscreen must not leave a black cutout strip above the window",0,boundsOf(activity.window.decorView).top)
+                assertEquals("document must reach the top edge",0,boundsOf(web).top)
+                val shot=screenshot("dsh-official-fullscreen-$cycle.png")
+                try { assertTrue("official document pixels missing in fullscreen cycle $cycle",hasDocumentPixels(shot,web)) } finally { shot.recycle() }
+                assertSame(web,attachedWebView(activity, web))
+                if(cycle==1) { instrumentation.uiAutomation.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK);SystemClock.sleep(300) }
+                else click("退出全屏")
+                find("进入全屏")
+                assertEquals(before.timeOrigin,awaitViewport(web).timeOrigin,0.0)
+            }
+            screenshot("dsh-official-after-fullscreen.png").recycle()
+        } finally {
+            try { if(startedByTest) kotlinx.coroutines.runBlocking { runtime.stop() } }
+            finally { cleanup(activity) }
+        }
+    }
+
+    @Test fun actualDshWebViewSurvivesFullscreenWithoutReload() {
+        val activity = launch(); cancelSourceTests()
+        var beforeShot: Bitmap? = null; var fullShot: Bitmap? = null; var afterShot: Bitmap? = null
+        try {
+            val browser = browserOf(activity)
+            awaitProbe(browser); val web = browser.view
+            val state = mutableStateOf(model(snapshot = runningSnapshot())); val rec = Recorder()
+            mount(activity, state, rec, web, night = isNight(activity.resources.configuration), fontScale = 1f)
+            click("DSH"); awaitAttached(activity, web)
+            loadHtml(web, VIEWPORT_HTML, "typeof window.__setupMarker==='string'")
+            val before = awaitViewport(web); val marker = before.marker; val origin = before.timeOrigin
+            find("进入全屏")
+            beforeShot = run { SystemClock.sleep(300); screenshot("setup-webview-before.png") }
+            assertTrue(before.w > 0 && before.h > 0 && boundsOf(web).width() > 0 && boundsOf(web).height() > 0)
+            click("进入全屏"); find("退出全屏")
+            val full = awaitViewport(web) { it.h > before.h }
+            fullShot = run { SystemClock.sleep(300); screenshot("setup-webview-fullscreen.png") }
+            assertTrue("fullscreen callback was not exercised", rec.fullscreen.contains(true))
+            assertSame("fullscreen must keep the same WebView instance", web, browser.view)
+            assertSame("the attached browser must be the native DshWebView", web, attachedWebView(activity, web))
+            assertEquals("page must not reload in fullscreen", marker, full.marker)
+            assertEquals("timeOrigin must not change in fullscreen", origin, full.timeOrigin, 0.0)
+            assertTrue("fullscreen viewport must be positive", full.w > 0 && full.h > 0)
+            assertTrue("fullscreen must increase WebView height", full.h > before.h)
+            assertTrue("fullscreen document pixels must paint outside native overlays", hasDocumentPixels(fullShot!!, web))
+            assertEquals("no reserved cutout strip",0,boundsOf(activity.window.decorView).top)
+            assertEquals("document reaches top edge",0,boundsOf(web).top)
+            assertEquals(View.LAYER_TYPE_HARDWARE,web.layerType)
+            click("退出全屏"); val after = awaitViewport(web) { it.marker == marker }
+            afterShot = run { SystemClock.sleep(300); screenshot("setup-webview-after.png") }
+            assertEquals(false, rec.fullscreen.last())
+            assertEquals("release fullscreen texture on exit",View.LAYER_TYPE_NONE,web.layerType)
+            assertEquals("page must not reload after exiting fullscreen", marker, after.marker)
+            assertEquals("timeOrigin must not change after exiting fullscreen", origin, after.timeOrigin, 0.0)
+        } finally { beforeShot?.recycle(); fullShot?.recycle(); afterShot?.recycle(); cleanup(activity) }
+    }
+    @Test fun appThemeResourceDrivesWebViewColorSchemeWithoutGlobalChanges() {
+        val activity = launch(); cancelSourceTests(); val themed = ArrayList<WebView>()
+        try {
+            val browser = browserOf(activity)
+            awaitProbe(browser); val original = Configuration(activity.resources.configuration)
+            for (dark in listOf(false, true)) {
+                val view = createThemedWebView(dark); themed += view
+                loadHtml(view, THEME_HTML, "window.__hpThemeReady==='hp-theme'")
+                assertEquals("Theme.Tanuki must expose prefers-color-scheme=$dark",
+                    dark, evalBoolean(view, "matchMedia('(prefers-color-scheme: dark)').matches"))
+                assertEquals(if (dark) "rgb(0, 0, 0)" else "rgb(255, 255, 255)",
+                    evalString(view, "getComputedStyle(document.body).backgroundColor"))
+            }
+            val expectedDark = isNight(original)
+            loadHtml(browser.view, THEME_HTML, "window.__hpThemeReady==='hp-theme'")
+            assertEquals("actual MainActivity WebView must match device uiMode",
+                expectedDark, evalBoolean(browser.view, "matchMedia('(prefers-color-scheme: dark)').matches"))
+            assertEquals(if (expectedDark) "rgb(0, 0, 0)" else "rgb(255, 255, 255)",
+                evalString(browser.view, "getComputedStyle(document.body).backgroundColor"))
+            assertEquals("theme checks must not mutate the activity configuration",
+                expectedDark, isNight(activity.resources.configuration))
+        } finally { runCatching { instrumentation.runOnMainSync { themed.forEach { it.destroy() } } }; cleanup(activity) }
+    }
+    private class Recorder {
+        val commands = ArrayList<String>(); val installs = ArrayList<Release>()
+        val sourceSelections = ArrayList<Pair<RuntimeComponent, String>>()
+        val versionSelections = ArrayList<Pair<RuntimeComponent, String>>()
+        val fullscreen = ArrayList<Boolean>()
+    }
+    companion object {
+        private const val BASE_URL = "https://setup-presentation.tanuki.invalid/"
+        private val UBUNTU_SOURCES = listOf(
+            RuntimeSource("official", "Ubuntu 官方", "https://cdimage.ubuntu.com/ubuntu-base/", "cdimage.ubuntu.com"),
+            RuntimeSource("tuna", "清华 TUNA", "https://mirrors.tuna.tsinghua.edu.cn/ubuntu-cdimage/", "mirrors.tuna.tsinghua.edu.cn"))
+        private val NODE_SOURCES = listOf(
+            RuntimeSource("official", "Node.js 官方", "https://nodejs.org/dist/", "nodejs.org"),
+            RuntimeSource("tuna", "清华 TUNA", "https://mirrors.tuna.tsinghua.edu.cn/nodejs-release/", "mirrors.tuna.tsinghua.edu.cn"))
+        private val VIEWPORT_HTML = """<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>html,body{margin:0;width:100%;height:100%;overflow:hidden}body{background:linear-gradient(90deg,#ff0000 0 33%,#00ff00 33% 66%,#0000ff 66% 100%)}#marker{position:absolute;left:8px;top:8px;width:40%;height:40%;background:#ffff00}</style></head><body><div id="marker"></div><script>window.__setupMarker='TANUKI_'+Math.random().toString(36).slice(2)+'_'+Date.now();</script></body></html>"""
+        private val THEME_HTML = """<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;width:100%;height:100%}body{background-color:rgb(255,255,255)}@media (prefers-color-scheme: dark){body{background-color:rgb(0,0,0)}}</style></head><body><script>window.__hpThemeReady='hp-theme';</script></body></html>"""
+    }
+}

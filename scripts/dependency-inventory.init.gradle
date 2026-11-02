@@ -1,0 +1,19 @@
+import groovy.json.JsonOutput
+import java.security.MessageDigest
+
+gradle.projectsEvaluated {
+    def app=gradle.rootProject.project(':app')
+    app.tasks.register('tanukiDependencyInventory') {
+        doLast {
+            def entries=app.configurations.getByName('modernProbeRuntimeClasspath').resolvedConfiguration.resolvedArtifacts.collect { artifact ->
+                def id=artifact.moduleVersion.id
+                def digest=MessageDigest.getInstance('SHA-256')
+                artifact.file.withInputStream { stream -> byte[] buffer=new byte[65536];int n;while((n=stream.read(buffer))>0)digest.update(buffer,0,n) }
+                [group:id.group,name:id.name,version:id.version,filename:artifact.file.name,file:artifact.file.absolutePath,sha256:digest.digest().encodeHex().toString()]
+            }.sort { a,b -> (a.group+':'+a.name) <=> (b.group+':'+b.name) }
+            def output=new File(gradle.rootProject.projectDir,'.build/runtime-dependencies.json')
+            output.text=JsonOutput.prettyPrint(JsonOutput.toJson(entries))+'\n'
+            println("Inventoried ${entries.size()} runtime artifacts")
+        }
+    }
+}

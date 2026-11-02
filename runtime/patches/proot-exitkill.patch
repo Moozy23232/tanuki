@@ -1,0 +1,9 @@
+--- a/src/tracee/event.c
++++ b/src/tracee/event.c
+@@ -535,7 +535,8 @@
+ 				PTRACE_O_TRACEVFORKDONE	|
+ 				PTRACE_O_TRACEEXEC	|
+ 				PTRACE_O_TRACECLONE	|
+-				PTRACE_O_TRACEEXIT);
++				PTRACE_O_TRACEEXIT       |
++				PTRACE_O_EXITKILL);

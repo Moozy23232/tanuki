@@ -1,0 +1,80 @@
+Tanuki original Android shell and runtime management code
+Copyright (C) 2026 Tanuki contributors
+SPDX-License-Identifier: GPL-3.0-or-later
+
+This project is independent of DeepSeek AI and Canonical. Names identify the
+upstream software; no endorsement is implied.
+
+Bundled native components:
+
+* PRoot, Android-maintained fork https://github.com/termux/proot
+  Upstream project https://proot-me.github.io/ / https://github.com/proot-me/proot
+  Tag v5.1.107.101, commit b27d81a68d765f3462e807f4a14e01a03f8e89ea.
+  GPL-2.0-or-later; see licenses/PRoot-GPL-2.0.txt and upstream per-file notices.
+  Local modification: runtime/patches/proot-exitkill.patch.
+  Build: runtime/build-native-runtime.sh using Android NDK r27c, API 26,
+  ARM64, external static ELF loader in the APK's nativeLibraryDir.
+  This uses a foundational Android PRoot component only; no Termux application,
+  DSH Android wrapper, wrapper scripts, runtime distribution, or UI was copied.
+
+* talloc 2.4.3 https://download.samba.org/pub/talloc/talloc-2.4.3.tar.gz
+  SHA-256 dc46c40b9f46bb34dd97fe41f548b0e8b247b77a918576733c528e83abd854dd
+  Library code LGPL-3.0-or-later; see licenses/talloc-LGPL-3.0.txt and GPLv3.
+  talloc.c and talloc.h are unmodified. The native build script supplies a small
+  Bionic portability configuration header and links a static talloc archive.
+  All corresponding source, the header generator, and relinking instructions
+  are available with this project; do not distribute binary-only releases.
+
+Android/runtime dependencies (fixed in app/build.gradle.kts):
+Apache-2.0 license text is included in licenses/Apache-2.0.txt.
+
+* AndroidX WebKit 1.10.0, Activity 1.9.0, Compose UI 1.6.8, Material3 1.2.1,
+  Lifecycle 2.8.0: Apache-2.0, https://android.googlesource.com/platform/frameworks/support/
+* Kotlin stdlib/compiler 1.9.24: Apache-2.0, https://github.com/JetBrains/kotlin
+* kotlinx.coroutines 1.8.1: Apache-2.0, https://github.com/Kotlin/kotlinx.coroutines
+* Apache Commons Compress 1.27.1 and transitive Commons libraries: Apache-2.0,
+  https://commons.apache.org/proper/commons-compress/
+* Gradle Wrapper 8.9: Apache-2.0, https://github.com/gradle/gradle/tree/v8.9.0
+  Wrapper JAR SHA-256 498495120a03b9a6ab5d155f5de3c8f0d986a449153702fb80fc80e134484f17
+  Gradle distribution SHA-256 d725d707bfabd4dfdc958c624003b3c80accc03f7037b5122c4b1d0ef15cecab
+* Android SDK/NDK and JDK are build tools and not bundled in the APK.
+
+Downloaded by the application, not embedded Linux distributions in the APK:
+
+* Ubuntu Base 24.04.5 LTS ARM64:
+  https://cdimage.ubuntu.com/ubuntu-base/releases/24.04/release/ubuntu-base-24.04.5-base-arm64.tar.gz
+  SHA-256 a91d5a93010193712d346d761372b7c9db6dfcf093893161c64ca107f05914f2
+  Multiple licenses. Per-package notices in /usr/share/doc/*/copyright.
+  apt adds signed Ubuntu repository packages; these package revisions vary with
+  the Ubuntu security repository. Record dpkg-query output for each installation.
+  Source packages: https://ports.ubuntu.com/ and the corresponding Ubuntu source archives.
+
+* Node.js 24.22.2, Linux ARM64:
+  https://nodejs.org/dist/v24.22.2/node-v24.22.2-linux-arm64.tar.gz
+  SHA-256 95c264150aceb7f3437a29fd6984924f5f8d1511ea3cbd6c508b83f6c555dae2
+  Node.js MIT and included third-party notices; preserve /opt/node/LICENSE.
+  Source: https://nodejs.org/dist/v24.22.2/node-v24.22.2.tar.gz
+
+* pnpm 11.28.5, official npm package, Node.js >=22.13:
+  https://registry.npmjs.org/pnpm/-/pnpm-11.28.5.tgz
+  SHA-256 1ef4e447a68713656064f3f174c0f44719960a043a3fe2299169d08cf1dbf8ee
+  MIT; see licenses/pnpm-MIT.txt. Installed under /opt/pnpm/11.28.5,
+  used by the official DSH plugin manager without replacing that manager.
+  Source https://github.com/pnpm/pnpm
+
+* Official @deepseek-ai/dsh 0.2.1-rc.5:
+  https://registry.npmjs.org/@deepseek-ai/dsh/-/dsh-0.2.1-rc.5.tgz
+  SHA-512 integrity:
+  sha512-WkyJZv4zl9sCAxSzRctGm58m0rilGqwR6pniBiLOz5CPDfHfDuAUicg0AAazXI7oj/Cph6/cjNTncA/rpLTXpw==
+  Source https://github.com/deepseek-ai/deepseek-harness
+  MIT; bundled dependency components have their own licenses, including BSD.
+  Preserve npm package license files, package-lock.json, upstream notices, and
+  plugin licenses. See licenses/DSH-MIT.txt. The Android project does not copy
+  or modify the official frontend.
+
+Integrity boundary: hashes were obtained from the official HTTPS sources and
+pinned for this build. The Android installer does not currently verify GPG,
+npm registry signatures, or publisher provenance. See docs/SECURITY.md.
+Release checklist must include a full dependency/license inventory generated
+from the actual APK and installed DSH lockfile; this summary is not a substitute
+for shipping all required corresponding sources and notices.

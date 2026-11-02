@@ -1,0 +1,8 @@
+{
+  "name": "tanuki-smoke-plugin",
+  "version": "1.0.0",
+  "type": "module",
+  "license": "GPL-3.0-or-later",
+  "exports": { ".": "./index.mjs", "./package.json": "./package.json" },
+  "dsh": { "bundle": { "patch": ["./cordis.patch.yml"] } }
+}

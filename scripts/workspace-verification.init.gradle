@@ -1,0 +1,10 @@
+// 可选验证隔离：debug/release使用专用包名、UID与私有目录。
+// 显式调用：./gradlew -I scripts/workspace-verification.init.gradle ...
+allprojects { candidate ->
+    candidate.plugins.withId('com.android.application') {
+        candidate.extensions.getByName('androidComponents').finalizeDsl { androidDsl ->
+            androidDsl.buildTypes.getByName('debug').applicationIdSuffix = '.workspacecheck'
+            androidDsl.buildTypes.getByName('release').applicationIdSuffix = '.workspacecheck'
+        }
+    }
+}
