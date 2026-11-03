@@ -1,5 +1,6 @@
 package com.tanuki.ui
 
+import android.os.Build
 import android.view.ViewGroup
 import android.webkit.WebView
 import androidx.activity.compose.BackHandler
@@ -13,7 +14,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
-import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
@@ -36,6 +36,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -52,6 +53,9 @@ import com.tanuki.storage.WorkspaceStorageState
 import com.tanuki.update.Release
 import com.tanuki.web.WebViewSupport
 import com.tanuki.web.WebViewSupportState
+import dev.chrisbanes.haze.HazeDefaults
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.haze
 import java.util.Locale
 
 /** Presentation only. The host owns permissions, confirmations, jobs and WebView lifetime. */
@@ -168,8 +172,12 @@ fun TanukiUi(model: TanukiUiModel, callbacks: TanukiUiCallbacks, browserView: We
     }
     BackHandler(tab == 4) { settingsBack() }
     val destinations = TanukiDestination.entries.take(4)
+    val hazeState = remember { HazeState() }
+    val layoutDirection = LocalLayoutDirection.current
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val wide = maxWidth >= 840.dp
+        // 只捕获原生滚动内容；网页保留原渲染链，旧系统使用高可读性的材质降级。
+        val nativeGlass = !wide && (tab == 0 || tab == 4) && Build.VERSION.SDK_INT >= 32
         Row(Modifier.fillMaxSize()) {
             if (wide && !activeFullscreen) NavigationRail(containerColor = Color.Transparent,
                 modifier = Modifier.fillMaxHeight().width(96.dp)) {
@@ -224,30 +232,13 @@ fun TanukiUi(model: TanukiUiModel, callbacks: TanukiUiCallbacks, browserView: We
                     if (!wide && !activeFullscreen) Column(
                         Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 16.dp, vertical = 8.dp)
                     ) {
-                        Surface(
-                            shape = RoundedCornerShape(28.dp),
-                            color = MaterialTheme.colorScheme.surfaceContainerLow,
-                            tonalElevation = 2.dp,
-                            shadowElevation = 2.dp,
-                        ) {
-                            Row(Modifier.fillMaxWidth().heightIn(min = 68.dp).selectableGroup(), verticalAlignment = Alignment.CenterVertically) {
-                                destinations.forEachIndexed { index, destination ->
-                                    NavigationBarItem(
-                                        selected = tab == index,
-                                        onClick = { navigate(index) },
-                                        modifier = Modifier.weight(1f),
-                                        icon = { TanukiIcon(destination.glyph, destination.title) },
-                                        label = { Text(destination.title, style = MaterialTheme.typography.labelMedium) },
-                                        colors = NavigationBarItemDefaults.colors(
-                                            selectedIconColor = MaterialTheme.colorScheme.primary,
-                                            selectedTextColor = MaterialTheme.colorScheme.primary,
-                                            unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            indicatorColor = MaterialTheme.colorScheme.primaryContainer,
-                                        ),
-                                    )
-                                }
-                            }
+                        GlassNavigationBar(
+                            selectedIndex = tab,
+                            labels = destinations.map { it.title },
+                            onSelect = ::navigate,
+                            hazeState = if (nativeGlass) hazeState else null,
+                        ) { index, tint ->
+                            TanukiIcon(destinations[index].glyph, destinations[index].title, tint = tint)
                         }
                     }
                 }) { padding ->
@@ -262,9 +253,23 @@ fun TanukiUi(model: TanukiUiModel, callbacks: TanukiUiCallbacks, browserView: We
                     2 -> pageStates.SaveableStateProvider("files") { filesPage(pageModifier) }
                     3 -> pageStates.SaveableStateProvider("browser") { agentBrowserPage(pageModifier, browserFullscreen, { browserFullscreen = it }) }
                     else -> key(tab, settingsSection.takeIf { tab == 4 }) {
-                        Box(pageModifier.background(tanukiPageBrush())) {
+                        // 原生内容可滚到玻璃后方，尾部仍预留导航高度，避免最后一项被遮挡。
+                        val nativeModifier = if (nativeGlass) Modifier.fillMaxSize().padding(
+                            start = padding.calculateStartPadding(layoutDirection),
+                            top = padding.calculateTopPadding(),
+                            end = padding.calculateEndPadding(layoutDirection),
+                        ).consumeWindowInsets(padding).haze(
+                            hazeState,
+                            HazeDefaults.style(
+                                tint = MaterialTheme.colorScheme.surface.copy(alpha = 0.22f),
+                                blurRadius = 18.dp,
+                                noiseFactor = 0.035f,
+                            ),
+                        ) else pageModifier
+                        val bottomSpace = 32.dp + if (nativeGlass) padding.calculateBottomPadding() else 0.dp
+                        Box(nativeModifier.background(tanukiPageBrush())) {
                             Column(Modifier.align(Alignment.TopCenter).widthIn(max = 760.dp).fillMaxSize().tanukiEnter().imePadding()
-                                .verticalScroll(rememberScrollState()).padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 32.dp),
+                                .verticalScroll(rememberScrollState()).padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = bottomSpace),
                                 verticalArrangement = Arrangement.spacedBy(28.dp)) {
                                 if (tab == 0) Overview(model, callbacks, openDsh = { tab = 1 })
                                 else SettingsPage(model, callbacks, settingsSection) { settingsSection = it }
