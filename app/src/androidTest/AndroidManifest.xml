@@ -3,5 +3,13 @@
         <!-- Public cross-UID backdrop fixture, packaged only in the instrumentation APK. -->
         <activity android:name="com.tanuki.OverlayBackdropActivity"
             android:exported="true" android:theme="@android:style/Theme.Material.Light.NoActionBar" />
+        <!-- 真实匹配APK的普通UID接收方，不能获得系统安装器的显式授权。 -->
+        <activity android:name="com.tanuki.ApkUriProbeActivity" android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="content" android:mimeType="application/vnd.android.package-archive" />
+            </intent-filter>
+        </activity>
     </application>
 </manifest>

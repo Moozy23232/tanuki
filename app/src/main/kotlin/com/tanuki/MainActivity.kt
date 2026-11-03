@@ -514,11 +514,10 @@ class MainActivity : ComponentActivity() {
         android.app.AlertDialog.Builder(this).setTitle("覆盖更新 Tanuki？")
             .setMessage("已核对同包名、同签名和更高版本。Ubuntu、Node.js、DSH 与项目会保留；请勿卸载旧应用。下一步仍需在 Android 安装器中确认。")
             .setNegativeButton("取消", null).setPositiveButton("继续安装") { _, _ ->
-                appUpdates.prepareInstall { uri ->
+                appUpdates.prepareInstall { installer ->
                     if (!isFinishing && !isDestroyed) runCatching {
                         check(appUpdates.installAllowed())
-                        startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(uri, "application/vnd.android.package-archive")
-                            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
+                        startActivity(installer)
                     }.onFailure { appUpdates.installerFailed() }
                 }
             }.show()

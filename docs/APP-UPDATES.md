@@ -17,8 +17,12 @@
 2. 用户点击「下载更新」才下载，使用应用专属 CDN 范围、实际大小/字节进度、耗时、取消和 SHA-256；单 APK 最多 512 MiB。未知总量/检查/校验阶段是不定进度，不编造百分比。
 3. 文件只放 `cacheDir/application-updates`，验证目录/文件归属与链接，下载后及安装前重新检查真实 APK 包名、版本、最低 SDK、签名证书和字节哈希。主线程不做网络、磁盘哈希或 APK 解析。
 4. 安装前要求 DSH 已停止、没有组件安装/更新、真实子进程和文件任务；如果环境忙碌，保留已下载文件，提示先停止。检查/下载通过前台任务显示状态，不自动中断真实工作。
-5. 通过包名绑定的非导出 FileProvider，仅把 APK 缓存文件以临时只读 URI 授权交给 Android 安装器。需要用户确认安装；未获「安装未知应用」许可时先由用户在系统设置授权，再明确重试，不偷偷自动安装。系统还会校验 APK 的真实签名与安装兼容性。
+5. 更新与浏览器下载分别使用独立的非导出FileProvider子类，保持原authority和目录范围，避免两个authority共用同一组件身份。更新provider仅共享已经复验的APK。Intent同时带data、ClipData和只读标记；仅向实际匹配APK的系统安装处理器补充单文件只读授权，并使用解析到的系统组件，兼容MIUI安装器在Activity启动前的预读。不授予普通APK关联应用，不申请全量应用可见性。需要用户确认安装；未获「安装未知应用」许可时先由用户在系统设置授权，再明确重试，不偷偷自动安装。系统还会校验 APK 的真实签名与安装兼容性。
 6. 校验/网络失败或取消不清除现有 App 和环境，不卸载、不 `pm clear`，也不自动回滚用户数据。
+
+补充读取授权最多10分钟，下一次检查/下载/安装准备或启动安装器失败时收回；只保存本应用更新URI与到期时刻，进程重建后继续按原期限回收，不自动重放安装。安装器可能先把读取工作交给后台组件，不能依赖Activity立即返回就撤销授权。实现见 `update/ApkInstallAccess.kt`，FileProvider仍为 `exported=false`，不扩大可共享目录。
+
+旧版本发起安装时的授权逻辑无法由待安装APK倒过来修改。如旧版本已遇到MIUI拒绝读取，可将新APK保存到系统下载目录，使用系统文件管理器手动覆盖一次；保持同包同证书，不卸载或清数据。后续由修复版发起更新使用新的授权链。MIUI真机仍需复验，AOSP模拟器结果不冒充其通过。
 
 实现：[`Downloader.kt`](../app/src/main/kotlin/com/tanuki/download/Downloader.kt)、[`AppUpdateFiles.kt`](../app/src/main/kotlin/com/tanuki/update/AppUpdateFiles.kt)、[`MainActivity.kt`](../app/src/main/kotlin/com/tanuki/MainActivity.kt)、[`update_file_paths.xml`](../app/src/main/res/xml/update_file_paths.xml)。
 
@@ -26,18 +30,18 @@
 
 ## 发布者必须提供什么
 
-未来用户说「发布」时，Agent **先问版本号**（已经明确则不重复问），确认递增的 `versionCode` 和渠道后再打包。本次用户确认 `v0.1.2`，对应 `versionName=0.1.2` / `versionCode=4`，沿用原workspacecheck开发证书。打包、源码提交/推送、创建 tag、上传 Release 是不同授权；本次只在本地准备附件，Release 由用户发布。
+未来用户说「发布」时，Agent **先问版本号**（已经明确则不重复问），确认递增的 `versionCode` 和渠道后再打包。本次用户确认 `v0.1.3`，对应 `versionName=0.1.3` / `versionCode=5`，沿用原workspacecheck开发证书。打包、源码提交/推送、创建 tag、上传 Release 是不同授权；本次只在本地准备附件，Release 由用户发布。
 
 ```bash
 source scripts/env.sh
-python3 scripts/prepare-app-release.py --version 0.1.2 --version-code 4 --channel workspacecheck
+python3 scripts/prepare-app-release.py --version 0.1.3 --version-code 5 --channel workspacecheck
 ```
 
-脚本验证实际 APK 包名、版本、SDK、证书和文件字节，生成 `artifacts/releases/0.1.2/`：
+脚本验证实际 APK 包名、版本、SDK、证书和文件字节，生成 `artifacts/releases/0.1.3/`：
 
-- `Tanuki-0.1.2-workspacecheck-arm64-release.apk`：开发证书、non-debuggable 的测试发布包；GitHub 应标 Pre-release。
-- **`app-update.json`**：脚本生成的更新清单，必须与 APK 上传到 tag `v0.1.2` 的同一个 Release，不能只上传 APK。
-- `RELEASE-SHA256SUMS`、完整 `Tanuki-0.1.2-source.zip`、原生对应源码与校验文件。
+- `Tanuki-0.1.3-workspacecheck-arm64-release.apk`：开发证书、non-debuggable 的测试发布包；GitHub 应标 Pre-release。
+- **`app-update.json`**：脚本生成的更新清单，必须与 APK 上传到 tag `v0.1.3` 的同一个 Release，不能只上传 APK。
+- `RELEASE-SHA256SUMS`、完整 `Tanuki-0.1.3-source.zip`、原生对应源码与校验文件。
 
 清单结构为 `schemaVersion:1` / `packages` 数组，每个包包含 `packageName`、`versionName`、整数 `versionCode/minSdk/bytes`、`assetName`、`sha256`、`certificateSha256`。不要把文档示例或其他包/版本的元数据当成实际附件。更换/重打 APK 后必须重跑生成和外部散列检查。
 

@@ -40,6 +40,7 @@ class ApplicationUpdateManager(private val app: TanukiApp) {
     private val directory get() = AppUpdateFiles.directory(app.cacheDir)
 
     fun check() = operation(AppUpdateState(AppUpdatePhase.CHECKING, "正在检查 GitHub 发布列表")) {
+        ApkInstallAccess.revoke(app)
         readyFile = null
         val installed = installedIdentity()
         val root = "https://github.com/${AppUpdatePolicy.REPOSITORY}"
@@ -72,6 +73,7 @@ class ApplicationUpdateManager(private val app: TanukiApp) {
     fun download() {
         val candidate = state.value.candidate ?: return
         operation(AppUpdateState(AppUpdatePhase.DOWNLOADING, "正在下载 Tanuki 更新", candidate, total = candidate.bytes)) {
+            ApkInstallAccess.revoke(app)
             AppUpdatePolicy.requireCompatible(candidate, installedIdentity(), Build.VERSION.SDK_INT)
             check(directory.mkdirs() || directory.isDirectory) { "不能创建更新缓存目录" }
             directory.listFiles()?.filter { it.isFile }?.forEach { check(it.delete()) { "不能清理旧更新缓存" } }
@@ -103,7 +105,7 @@ class ApplicationUpdateManager(private val app: TanukiApp) {
             setOf(ServiceState.STOPPED, ServiceState.FAILED, ServiceState.INTERRUPTED)
     }
 
-    fun prepareInstall(onReady: (Uri) -> Unit) {
+    fun prepareInstall(onReady: (Intent) -> Unit) {
         if (state.value.phase != AppUpdatePhase.READY || !installAllowed()) {
             mutable.value = state.value.copy(message = "请先停止 DSH，并等待环境安装、更新和文件任务结束，再安装 APK")
             return
@@ -114,15 +116,19 @@ class ApplicationUpdateManager(private val app: TanukiApp) {
             verify(file, candidate)
             check(installAllowed()) { "运行环境已变为忙碌，请停止 DSH 后重试" }
             val uri = FileProvider.getUriForFile(app, "${app.packageName}.updates", file)
+            val installer = ApkInstallAccess.prepare(app, uri)
             withContext(Dispatchers.Main.immediate) {
                 mutable.value = AppUpdateState(AppUpdatePhase.READY, "正在等待 Android 安装确认；取消安装不会清除运行环境", candidate,
                     candidate.bytes, candidate.bytes)
-                if (installAllowed()) onReady(uri)
+                if (installAllowed()) onReady(installer) else ApkInstallAccess.revokeAsync(app)
             }
         }
     }
 
-    fun installerFailed() { mutable.value = state.value.copy(message = "无法打开系统安装器，请检查安装权限后重试") }
+    fun installerFailed() {
+        ApkInstallAccess.revokeAsync(app)
+        mutable.value = state.value.copy(message = "无法打开系统安装器，请检查安装权限后重试")
+    }
     fun cancel() { if (hasActiveOperation) job?.cancel() }
 
     private fun operation(initial: AppUpdateState, work: suspend () -> Unit) {

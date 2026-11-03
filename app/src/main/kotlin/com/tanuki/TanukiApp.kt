@@ -46,5 +46,7 @@ class TanukiApp : Application() {
         android.webkit.WebView.enableSlowWholeDocumentDraw()
         cacheDir.listFiles()?.filter { it.isFile && it.name.startsWith("tanuki-blob-") }?.forEach { it.delete() }
         runtime = RuntimeManager(this)
+        // 安装器可能跨进程预读APK；恢复有期限的只读授权，不恢复任何安装动作。
+        com.tanuki.update.ApkInstallAccess.restore(this)
     }
 }

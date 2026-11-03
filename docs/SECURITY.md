@@ -18,7 +18,7 @@ DSH 默认版可用 APK 预置的官方 npm 完整锁，APK 中固定 SHA-256 �
 
 DeepSeek 登录只对 `platform.deepseek.com/dsh/authorize` / `client_id=deepseek_harness` 的官方 HTTPS 入口建立短期单次票据；来源必须是当前已连接管理页，回调只到官方声明的当前 loopback origin `/callback`。授权使用独立、不给 AI 读取/截图/输入权限且不保存历史的临时标签。当前运行身份变化、超时、重放、其他路径/端口/来源均拒绝；完成时关闭临时标签，账号 Cookie 不复制到管理页。票据/授权码仅内存处理，不写日志；回调由原生对当前本机 host 发请求，不在独立浏览器加载管理 origin，仍由官方 host 校验 OAuth 状态和授权结果。预开空白窗口再异步导航/主框架异步授权不再被无手势拦截，但普通外链没有获得该特例。真实账号登录仍待验收。实现见 `web/DshOAuth.kt`、`web/DshWebView.kt` 与 `browser/AgentBrowserController.kt`。
 
-Tanuki APK 更新只使用本仓库 HTTPS 公开 Release/附件，不调用 GitHub API、不要求账号 token。清单不代替 APK 身份和证书校验；同包/同证书/更高版本/当前 Android、真实大小/SHA-256、归属缓存文件及安装前复验均须通过。FileProvider 只临时只读共享专用 APK 缓存，Android 系统安装器继续校验签名并等待用户授权；忙碌的 DSH/安装/文件任务不允许进入安装。不自动卸载/清数据/换签名；详见 [应用内更新](APP-UPDATES.md)。
+Tanuki APK 更新只使用本仓库 HTTPS 公开 Release/附件，不调用 GitHub API、不要求账号 token。清单不代替 APK 身份和证书校验；同包/同证书/更高版本/当前 Android、真实大小/SHA-256、归属缓存文件及安装前复验均须通过。应用更新与浏览器下载使用不同FileProvider子类，避免相同组件名的多authority冲突；更新非导出provider只共享专用缓存中的一个已复验APK，Intent使用ClipData和只读标记；安装器预读只向实际匹配APK的系统处理器补充只读授权，不预授权普通关联App、不开放provider或全缓存。补充授权最多10分钟，下一次更新操作/安装启动失败时收回；进程重建只恢复原URI到期回收，不重放安装，不保存凭据。Android系统安装器继续校验签名并等待用户授权；忙碌的DSH/安装/文件任务不允许进入安装。不自动卸载/清数据/换签名；详见[应用内更新](APP-UPDATES.md)。
 
 官方 Blob 导出通过文件专用 WebMessageListener。仅在精确管理 origin 注册；回调验证 sourceOrigin、主 frame、待处理请求与随机一次性 nonce；拒绝无请求和重放消息，传输上限 8MiB，最后经 SAF 确认保存。桥没有 shell、任意文件读或动态执行能力，其他端口不注入。该通道可在设置关闭；专项测试已验证实际 UTF-8 文件字节、伪造 nonce 拒绝和另一个端口没有对象。
 
