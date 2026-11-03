@@ -14,6 +14,8 @@ import org.json.JSONObject
 import java.io.File
 import java.io.IOException
 import java.net.URI
+import java.nio.file.Files
+import java.nio.file.LinkOption.NOFOLLOW_LINKS
 import java.security.MessageDigest
 import java.util.Base64
 import java.util.concurrent.atomic.AtomicInteger
@@ -34,8 +36,9 @@ internal class NpmPackageDownloads(private val manager: RuntimeManager) {
                 }
                 File(isolated, "home/.tanuki-global-npmrc").writeText("")
                 val guest = "/opt/engines/$version"
-                suspend fun run(label: String, args: List<String>, progressKind: String? = null) {
-                    val result = manager.launcher.run(
+                suspend fun run(label: String, args: List<String>, progressKind: String? = null, resolving: Boolean = false) {
+                    var responses = 0
+                    val result = try { manager.launcher.run(
                         root = manager.paths.root,
                         args = listOf(
                             "/usr/bin/env",
@@ -51,28 +54,67 @@ internal class NpmPackageDownloads(private val manager: RuntimeManager) {
                         workspace = File(isolated, "workspace"),
                         engineHome = container,
                         onLine = { line ->
+                            if (resolving && METADATA_RESPONSE.containsMatchIn(line)) {
+                                responses++
+                                manager.state.update { it.copy(stage = "解析 DSH 依赖（官方元数据响应 $responses 次，缓存优先）") }
+                            }
                             if (progressKind != null) installProgress(line, progressKind)?.let { (done, total) ->
                                 val title = "写入已验证的 npm 缓存"
                                 manager.state.update { it.copy(stage = "$title（$done/$total）", phasePercent = done * 100 / total) }
                             }
                         },
-                    )
+                    ) } catch (error: CommandTimeoutException) {
+                        val suggestion = if (resolving) "请检查网络后重试" else "请检查当前阶段与设备存储后重试"
+                        throw IOException("$label：命令超过 20 分钟；不会清除已有公开缓存，$suggestion", error)
+                    }
                     check(result.exitCode == 0) {
                         "$label：退出码 ${result.exitCode}；" +
-                            Redact.text(result.stderr.ifBlank { result.stdout }).takeLast(1200)
+                            Redact.text(result.stderr.ifBlank { result.stdout }).takeLast(1200) +
+                            if (resolving) "；公开元数据缓存已保留，请根据错误检查网络或 Node 兼容性后重试" else ""
                     }
                 }
-                val sourceOrder = manager.npmSources.orderedForInstall(version)
                 val npmFlags = listOf("--engine-strict", "--no-audit", "--no-fund", "--loglevel=http", "--registry=$REGISTRY", "--prefix", guest)
-                manager.phase("解析 DSH 依赖", EnvironmentState.INSTALLING)
-                run("依赖解析失败", listOf("/opt/node/bin/npm", "install", "--package-lock-only", "--ignore-scripts", "--save-exact") + npmFlags + "@deepseek-ai/dsh@$version")
                 val lock = File(stage, "package-lock.json")
-                verifyTop(lock, version, expectedIntegrity)
-                val lockHash = Downloader.hash(lock)
-
-                manager.phase("检查依赖平台与完整性", EnvironmentState.VERIFYING)
+                // 总是生成无脚本的入口清单，缓存只携带公开依赖锁，不复用任意 package.json。
+                File(stage, "package.json").writeText(JSONObject().put("name", "tanuki-dsh-runtime").put("version", "1.0.0")
+                    .put("private", true).put("dependencies", JSONObject().put("@deepseek-ai/dsh", version)).toString())
                 File(stage, ".dsh-plan.cjs").writeText(PLAN_SCRIPT)
-                run("依赖检查失败", listOf("/opt/node/bin/node", "$guest/.dsh-plan.cjs", guest, version, expectedIntegrity))
+                manager.phase("检查 DSH 解析环境", EnvironmentState.CHECKING)
+                val environment = manager.launcher.run(root = manager.paths.root,
+                    args = listOf("/opt/node/bin/node", "-e", "console.log(JSON.stringify({node:process.versions.node,npm:require('/opt/node/lib/node_modules/npm/package.json').version}))"),
+                    home = File(isolated, "home"), dshHome = File(isolated, "dsh"), workspace = File(isolated, "workspace"), engineHome = container)
+                check(environment.exitCode == 0) { "无法检查 DSH 安装使用的 Node/npm：${Redact.text(environment.stderr).takeLast(600)}" }
+                val actual = JSONObject(environment.stdout.trim())
+                val identity = NpmLockIdentity(version, expectedIntegrity, actual.getString("node"), actual.getString("npm"))
+                NpmDependencyLocks(NpmLockCache(manager.paths.base)).prepare(identity,
+                    reuse = {
+                        installedLock(version, expectedIntegrity)?.let { NpmLockCandidate(it, NpmLockOrigin.INSTALLED) }
+                            ?: BundledDshLock.load(version, expectedIntegrity) { manager.context.assets.open(BundledDshLock.ASSET).use { it.readBytes() } }
+                                ?.let { NpmLockCandidate(it, NpmLockOrigin.BUNDLED) }
+                    },
+                    resolveOfficial = {
+                        run("依赖解析失败", listOf("/opt/node/bin/npm", "install", "--package-lock-only", "--ignore-scripts", "--save-exact", "--prefer-offline") +
+                            npmFlags + "@deepseek-ai/dsh@$version", resolving = true)
+                        check(lock.isFile && lock.length() in 1..MAX_JSON_BYTES) { "官方依赖锁缺失或过大" }
+                        lock.readBytes()
+                    },
+                    verify = { bytes ->
+                        lock.writeBytes(bytes)
+                        verifyTop(lock, version, expectedIntegrity)
+                        manager.phase("检查依赖平台与完整性", EnvironmentState.VERIFYING)
+                        run("依赖检查失败", listOf("/opt/node/bin/node", "$guest/.dsh-plan.cjs", guest, version, expectedIntegrity))
+                        check(Downloader.hash(lock) == npmLockSha256(bytes)) { "依赖检查期间锁发生变化" }
+                    },
+                    onOrigin = { origin ->
+                        manager.phase(when (origin) {
+                            NpmLockOrigin.SAVED -> "复用已验证的 DSH 依赖锁"
+                            NpmLockOrigin.INSTALLED -> "复用已安装 DSH 的依赖锁"
+                            NpmLockOrigin.BUNDLED -> "使用 APK 预置 DSH 依赖锁"
+                            NpmLockOrigin.OFFICIAL -> "解析 DSH 依赖（官方元数据，缓存优先）"
+                        }, EnvironmentState.INSTALLING)
+                    },
+                    onCacheError = { manager.event("DSH 依赖锁缓存未能保存，本次继续安装；下次可能需要重新解析") })
+                val lockHash = Downloader.hash(lock)
                 val planned = readJson(File(stage, ".dsh-plan.json")).getJSONArray("archives")
                 check(planned.length() in 1..MAX_ARCHIVES) { "依赖下载清单不完整" }
                 // Do not gate installation on official-only HEAD/Range requests. Some mobile
@@ -93,6 +135,7 @@ internal class NpmPackageDownloads(private val manager: RuntimeManager) {
                 check(manager.paths.base.usableSpace > 64L * 1024 * 1024) {
                     "空间不足，下载至少需要保留 64 MiB；当前程序和已校验缓存保留"
                 }
+                val sourceOrder = manager.npmSources.orderedForInstall(version)
                 manager.phase("下载 DSH 依赖", EnvironmentState.DOWNLOADING)
                 manager.event("依赖共 ${entries.size} 个；直接下载并逐包校验，总大小未知时显示已传输量，不等待大小预测")
                 download(entries, sourceOrder)
@@ -223,6 +266,22 @@ internal class NpmPackageDownloads(private val manager: RuntimeManager) {
         }
     }
 
+    private fun installedLock(version: String, integrity: String): ByteArray? {
+        val engine = File(manager.paths.engines, version)
+        val lock = File(engine, "package-lock.json")
+        val marker = File(engine, ".installed")
+        if (Files.isSymbolicLink(manager.paths.engines.toPath()) || Files.isSymbolicLink(engine.toPath()) ||
+            !Files.isRegularFile(lock.toPath(), NOFOLLOW_LINKS) || !Files.isRegularFile(marker.toPath(), NOFOLLOW_LINKS) ||
+            lock.length() !in 1..MAX_JSON_BYTES || marker.length() != 64L) return null
+        return try {
+            val bytes = lock.readBytes()
+            if (npmLockSha256(bytes) != marker.readText()) return null
+            verifyTop(lock, version, integrity)
+            bytes
+        } catch (cancelled: CancellationException) { throw cancelled }
+        catch (_: Exception) { null }
+    }
+
     private fun verifyTop(lock: File, version: String, integrity: String) {
         val packages = readJson(lock).getJSONObject("packages")
         val top = packages.getJSONObject("node_modules/@deepseek-ai/dsh")
@@ -251,6 +310,7 @@ internal class NpmPackageDownloads(private val manager: RuntimeManager) {
     }
 
     companion object {
+        private val METADATA_RESPONSE = Regex("^npm http (?:fetch GET [23][0-9]{2} |cache )https://registry\\.npmjs\\.org/\\S+")
         private val PROGRESS_LINE = Regex("DSH_PROGRESS (measure|seed) ([0-9]{1,4}) ([0-9]{1,4})")
         internal fun installProgress(line: String, expectedKind: String): Pair<Int, Int>? {
             val match = PROGRESS_LINE.matchEntire(line) ?: return null

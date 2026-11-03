@@ -2,7 +2,42 @@
 
 Tanuki验证目标：`com.tanuki.modern.workspacecheck`，命名空间 `com.tanuki`，ARM64、minSdk26/targetSdk34。debug/release构建与证书、宿主与设备执行必须分别记录，源码中有测试不等于已运行。
 
-## 本轮验证
+## 本轮验证：DSH 解析与弱网恢复（2026-11-03）
+
+| 范围 | 实际结果 | 边界 |
+|---|---|---|
+| 预置官方依赖锁 | 686 个非根记录均为官方 HTTPS/SHA-512，文件摘要与 APK 固定值一致 | 从官方 registry 新生成的公开元数据，不含依赖实现，不等于发布者签名 |
+| 产品依赖图脚本宿主验证 | 模拟 Linux/ARM64/glibc、Node 24.22.2/26.13.0/22.23.4，各选中 560 个归档且不改锁；3 个错误来源/入口校验/缺失必需依赖样本被拒绝 | 使用宿主 npm 11.19.0；不是 Android、PRoot、下载或实际安装测试 |
+| JVM | 64 项通过，失败/错误/跳过均 0 | 新增锁缓存、默认预置锁、隔离/损坏/符号链接/失败重试与命令到期/外部取消回归；不代表手机性能 |
+| Android 编译/组装 | modern debug、开发签名 release、debug AndroidTest 均成功 | 单一 init/flavor 串行 Gradle，完整构建/JVM/双 lint 4m7s；更新声明后再次组装，不安装 |
+| lint | debug/release 各 0 错误、49 警告、1 提示 | 非零警告，不能当全量产品验收 |
+| APK 身份与签名 | debug/release 均为 `com.tanuki.modern.workspacecheck`、Tanuki、仅 ARM64；debug=true/release=false；AndroidTest target 同目标；apksigner verify 成功 | 继续使用原开发证书，不是正式签名；未覆盖安装 |
+| 公开边界与宿主回归 | Git 工作树/索引扫描 0 发现；19 项上传脱敏、12 项交接/保护回归均通过；两 APK 与重建原生对应源码归档各 0 发现 | 规则有范围限制，不扫描用户数据、真实凭据或设备 |
+| 源码/迁移 | 258 个参与交接指纹的公开文件；源码 ZIP 261 个文件（含两份原生附件），0 发现；源码/双 APK/原生外部清单全部匹配；独立目录交接/边界/宿主锁/19+12 项回归通过 | 不依赖原工程路径/Git/私有缓存；结果回填后再次打包核对，不计为 Android 设备通过 |
+
+```bash
+python3 scripts/test-dsh-lock.py
+source scripts/env.sh
+export ANDROID_SDK_ROOT="$TANUKI_SDK"
+./gradlew --no-daemon -PtestBuildType=debug -PdevelopmentReleaseSigning=true \
+  -I scripts/workspace-verification.init.gradle \
+  :app:assembleModernDebug :app:assembleModernRelease :app:assembleModernDebugAndroidTest \
+  :app:testModernDebugUnitTest :app:lintModernDebug :app:lintModernRelease
+python3 scripts/test-publication.py
+python3 scripts/test-agent-workflow.py
+python3 scripts/check-publication.py --git
+```
+
+- 最终 debug APK SHA-256：`f98d770eb3d0ad51b302e0deab8c456a22fd5f1d92beb0371b26c03cf551c0c5`。
+- 最终 release APK SHA-256：`360f4b2408ccc31712e72cc291153f6b2150adee2ab1d38112ee562f7e211d77`。
+- 开发证书 SHA-256 继续为 `371dc301e7bb4d5cb2840510855f191eeb2f1ce4d058618361419409654cd84f`。
+- 初次 JVM 执行 64 项中有 1 项测试断言失败：协程栈恢复可复制 `CancellationException`，不能要求对象引用相同；已改为检查取消消息与只调用一次，随后 64 项全部通过。没有将首次失败计为通过。
+- 仪器回归已补「已安装/缓存锁复用、无元数据解析、现有程序不变」断言，但本次**仅编译**。默认版确实可跳过元数据解析已由产品逻辑/宿主依赖图和 JVM 回归核对；手机弱网提速幅度、完整候选安装、超时后重试和覆盖升级尚未设备验证。
+- 没有延长原请求/总命令超时、绕过完整性、删除已安装组件或用户数据，也没有安装、签名迁移、发布、提交或推送。源码交接及迁移收尾结果见[本轮记录](handoffs/20261103-1051-dsh-resolution-cache.md)。
+
+## 前一轮构建/迁移记录（2026-11-02，非本轮重跑）
+
+以下保留前轮的实际范围与散列供对照，**旧 APK 散列不能用于本轮修复包**。
 
 | 范围 | 实际结果 | 边界 |
 |---|---|---|

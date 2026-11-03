@@ -38,13 +38,45 @@ Ubuntu 与 Node 各提供八个下载源，DSH 归档提供五个源：
 ## 进度与取消
 
 - Ubuntu、Node、pnpm：显示真实字节百分比、已下载量、总大小和传输速度。完整缓存先通过校验，再显示已复用。
-- DSH依赖：解析官方依赖锁、过滤当前平台后下载；不强制逐包大小预探测。汇总实际接收字节，有可信总量才显示百分比，未知总量显示阶段/耗时。归档通过SHA-512后写入缓存，再进行离线安装阶段。
+- DSH依赖：优先复用已验证的依赖锁，默认版可使用 APK 预置官方锁；过滤当前平台后下载，不强制逐包大小预探测。没有可复用锁时才解析官方元数据，显示实际响应次数与耗时，不编造百分比。汇总真实下载字节，归档通过SHA-512后写入缓存，再进行离线安装阶段。
 - 基础工具：下载与配置阶段显示 apt 自身报告的百分比。
 - 校验、解包、依赖解析、安装检查分别显示阶段名称；它们没有可信总量时不编造百分比。下载达到 100% 表示数据已下载，整个安装仍需完成后续检查。
 
 取消后保留可安全复用的公开下载。重试时验证续传条件、大小和哈希；没有有效续传条件的归档重新下载。
 
+## DSH 依赖解析与弱网重试
+
+- 默认 `0.2.1-rc.5` 随 APK 提供来自官方 npm 的完整依赖锁，内容由 APK 中固定的 SHA-256 绑定；不必在手机上逐个联网解析全部依赖。**包归档仍需下载**，不等于完整离线安装。
+- 其他版本优先复用持久依赖锁或同版本已安装程序中带有效 `.installed` 标记的锁。缓存绑定 DSH 版本、选定发布的 SHA-512、实际 Node/npm 版本和解析策略；命中后仍检查入口、必需依赖、平台、引擎与所有选中归档的完整性。
+- 缺少可信锁才运行官方 npm 解析，使用 `--prefer-offline` 优先采用已取得的公开元数据。完整依赖图检查通过后立即原子保存锁到 `filesDir/downloads/npm-locks`；后面的下载或候选安装失败不会使下一次重试丢失这份解析结果。失败解析时原有隔离 npm 缓存也不清除。
+- 请求仍有 60 秒超时与两次重试，整命令仍以 20 分钟为上限；没有仅靠延长超时冒充提速。命令自身到期现在作为失败报告，不再混同「用户取消」，用户主动取消及外层任务取消仍保持取消语义。
+- 预置锁不是发布者签名；信任边界见 [SECURITY](SECURITY.md)。本次已实现并完成宿主/构建验证，手机弱网耗时与实际安装仍待专用设备测试，不承诺特定倍数。
+
+预置锁位于 [`app/src/main/assets/dsh-locks/0.2.1-rc.5.json`](../app/src/main/assets/dsh-locks/0.2.1-rc.5.json)，含 686 个非根包记录及跨平台可选依赖。2026-11-03 使用隔离 HOME/空 npm 配置、宿主 Node 26.13.0/npm 11.19.0 从 `https://registry.npmjs.org` 生成：在全新目录写入无脚本的 `tanuki-dsh-runtime@1.0.0`、`private:true` 与精确的 `@deepseek-ai/dsh:0.2.1-rc.5` 依赖，再执行 `npm install --package-lock-only --ignore-scripts --save-exact --engine-strict --no-audit --no-fund --registry=https://registry.npmjs.org --os=linux --cpu=arm64 --libc=glibc --fetch-timeout=60000 --fetch-retries=2`。更新锁时必须重新核对官方入口 SHA-512、全部官方 HTTPS 归档/SHA-512、平台与引擎，并同步 `BundledDshLock` 的版本/入口校验/全文件 SHA-256；不可只改摘要绕过审核。
+
+```bash
+# 只做宿主模拟依赖图检查，不下载/安装、不代表 Android 实测。
+python3 scripts/test-dsh-lock.py
+```
+
+实现见 [`NpmDependencyLocks.kt`](../app/src/main/kotlin/com/tanuki/runtime/NpmDependencyLocks.kt)、[`NpmPackageDownloads.kt`](../app/src/main/kotlin/com/tanuki/runtime/NpmPackageDownloads.kt)、[`CommandDeadline.kt`](../app/src/main/kotlin/com/tanuki/runtime/CommandDeadline.kt)。
+
+## 为什么 DSH 安装可能比 Ubuntu / Node 慢
+
+两类组件的下载工作量不同，不能只按总字节比较：
+
+- **Ubuntu / Node** 下载一个已知大小和 SHA-256 的归档，测速对象就是该归档。**DSH** 先准备或复用依赖锁，再逐包下载；当前归档下载最多四路并发，多个请求的首字节等待和尾部慢包都会影响总耗时。见 [`RuntimeComponents.kt`](../app/src/main/kotlin/com/tanuki/runtime/RuntimeComponents.kt)、[`NpmPackageDownloads.kt`](../app/src/main/kotlin/com/tanuki/runtime/NpmPackageDownloads.kt)。
+- **无可信锁时，镜像没有覆盖依赖解析**：需要运行 `npm install --package-lock-only` 时，registry 仍固定为 `https://registry.npmjs.org`。选择 npmmirror 等只改变归档地址；官方元数据链路慢时，换归档源不能消除这部分等待。npm 请求设置为 60 秒超时、两次重试；解析命令另有 20 分钟的整体上限。弱网可能先遇到单次请求失败，也可能因累积等待达到命令上限，具体需结合报错与耗时区分，不能仅靠延长总超时判断已经解决。见 [`NpmPackageDownloads.kt`](../app/src/main/kotlin/com/tanuki/runtime/NpmPackageDownloads.kt)、[`Launcher.kt`](../app/src/main/kotlin/com/tanuki/runtime/Launcher.kt)。
+- **短采样不代表全部依赖**：DSH 对所选版本的入口包最多采样 256 KiB，而非对整套依赖测速；结果可复用十分钟。正式下载出错才回退，没有按持续低吞吐自动切源；30 秒读取超时也不等于最低速度要求。见 [`NpmSources.kt`](../app/src/main/kotlin/com/tanuki/runtime/NpmSources.kt)、[`SourceSpeedTester.kt`](../app/src/main/kotlin/com/tanuki/runtime/SourceSpeedTester.kt)、[`Downloader.kt`](../app/src/main/kotlin/com/tanuki/download/Downloader.kt)。
+- **下载结束不等于安装结束**：归档逐包校验后，还会在 PRoot 中串行写入 npm 缓存，再运行 `npm ci --offline` 解包安装和检查。这些是本地 I/O 与安装耗时，不是下载带宽；保留归档可以省去再次传输，但目前仍需重新构建候选安装。见 [`NpmPackageDownloads.kt`](../app/src/main/kotlin/com/tanuki/runtime/NpmPackageDownloads.kt)、[`RuntimeManager.kt`](../app/src/main/kotlin/com/tanuki/runtime/RuntimeManager.kt)。
+
+上述是实现中的性能边界，不是特定手机的测速结论。定位时先记录界面的阶段、来源、已校验包数、字节/速度和阶段耗时，区分「解析 DSH 依赖」「下载 DSH 依赖」「写入已验证的 npm 缓存」「离线安装 DSH 依赖」。未知总大小本身不会阻止下载，不能据此判断卡死。优化仍须保留官方校验信息、TLS 与逐包完整性检查；不能为了提速跳过校验。
+
 ## 重装、卸载与数据
+
+**覆盖更新 Android App 不等于重装运行环境。** 同包名、同签名且系统允许升级的 APK 覆盖安装会保留应用私有数据；Ubuntu、Node、DSH 分别位于 `filesDir/runtime/ubuntu`、`filesDir/runtime/node`、`filesDir/engines/<版本>`，启动时读取安装标记和元数据，不会仅因 APK 更新就自动下载默认组件。项目、配置与会话也保存在应用私有目录。见 [`State.kt`](../app/src/main/kotlin/com/tanuki/runtime/State.kt)、[`RuntimeManager.kt`](../app/src/main/kotlin/com/tanuki/runtime/RuntimeManager.kt)、[`TanukiApp.kt`](../app/src/main/kotlin/com/tanuki/TanukiApp.kt)。
+
+更新前先结束下载、apt/dpkg 和真实任务，再停止 DSH；不要先卸载 App 或清除应用数据。当前开发目标是 `com.tanuki.modern.workspacecheck`，标准 `.modern` 是另一安装目标，不能混用。签名不匹配时不能通过卸载旧 App 来绕过覆盖安装限制并期待数据自动保留。尚在「解析 DSH 依赖」且未提交成功的候选不是已安装的 DSH，覆盖更新 App 不会自动补完它；已安装的 Ubuntu/Node 不需要因此重装。以上是实现与 Android 数据保留边界，本次没有执行设备覆盖升级测试。
 
 Ubuntu、Node、DSH 程序和项目、用户数据分别保存。卸载组件需要确认，保留用户主目录、DSH 配置、会话和项目；卸载整个 Android 应用或清除应用数据则会删除这些私有文件。
 
@@ -52,7 +84,7 @@ Ubuntu、Node 更换版本先准备候选，提交前失败时保留旧组件，
 
 DSH 同版本重装先在独立目录安装和检查候选程序，通过后才替换；失败、取消或切换中断会保留或恢复旧程序，项目与会话不随程序回退。备用安装只准备另一个程序版本，不切换当前数据。跨版本切换先执行候选检查、保存匹配快照，再启动新版本；回退数据需要匹配的 Ubuntu、Node 和 DSH 程序。
 
-DSH 的版本、依赖锁和 SHA-512 来自官方 npm；镜像只提供匹配校验值的归档。某个依赖未同步时只回退该包。安装后保留经过校验的依赖归档，便于重试和重装；「清理下载缓存」可移除它们。缓存并不保证离线安装，解析官方元数据仍可能需要联网。安装空间检查使用保守估算，包脚本可能需要更多空间。
+DSH 的版本、依赖锁和 SHA-512 来自官方 npm；镜像只提供匹配校验值的归档。某个依赖未同步时只回退该包。安装后保留经过校验的依赖归档和已验证锁，便于重试和重装；「清理下载缓存」可移除它们，不删除已安装程序或 APK 预置锁。缓存并不保证完整离线安装：归档不足、版本列表更新或没有可信锁的版本仍可能需要联网。安装空间检查使用保守估算，包脚本可能需要更多空间。
 
 ## 文件与命令权限
 

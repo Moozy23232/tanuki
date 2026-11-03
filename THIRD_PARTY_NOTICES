@@ -72,6 +72,11 @@ Downloaded by the application, not embedded Linux distributions in the APK:
   plugin licenses. See licenses/DSH-MIT.txt. The Android project does not copy
   or modify the official frontend.
 
+APK 另含 app/src/main/assets/dsh-locks/0.2.1-rc.5.json：从官方 npm HTTPS
+生成的公开依赖锁元数据，保留上游 license 字段，用于避免重复联网解析；
+不包含 DSH 或依赖包实现。锁的 SHA-256、生成和校验方法见 docs/COMPONENTS.md。
+实际下载的包仍须保留其许可与署名；预置锁不是发布者签名。
+
 Integrity boundary: hashes were obtained from the official HTTPS sources and
 pinned for this build. The Android installer does not currently verify GPG,
 npm registry signatures, or publisher provenance. See docs/SECURITY.md.

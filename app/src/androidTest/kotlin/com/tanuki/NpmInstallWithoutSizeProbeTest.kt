@@ -17,7 +17,7 @@ import org.junit.Test
 import java.io.File
 import java.util.concurrent.CopyOnWriteArrayList
 
-/** Real staged official npm install; existing runtime reused, no live engine/user data replacement. */
+/** 复用已验证的公开依赖锁进行候选安装，不替换现有运行环境或用户数据。 */
 class NpmInstallWithoutSizeProbeTest {
     @Test(timeout = 600_000L)
     fun officialCandidateInstallsWithoutSizePreflightAndPreservesLiveEngine(): Unit = runBlocking {
@@ -40,7 +40,7 @@ class NpmInstallWithoutSizeProbeTest {
         val container = File(directory, "engines").apply { check(mkdirs()) }
         val isolated = File(directory, "isolated").apply { check(mkdirs()) }
         val candidate = File(container, version).apply { check(mkdirs()) }
-        // Public manifests only; never copy accounts, project contents or model configuration.
+        // 只复制公开清单，不复制账号、项目内容或模型配置。
         lock.copyTo(File(candidate, "package-lock.json"))
         File(current, "package.json").copyTo(File(candidate, "package.json"))
         val before = runtime.state.value
@@ -54,6 +54,7 @@ class NpmInstallWithoutSizeProbeTest {
         }
         try {
             runtime.mutation.withLock {
+                phases.clear()
                 val staged = NpmPackageDownloads(runtime).install(version, integrity, container, isolated)
                 assertEquals(candidate, staged)
                 assertTrue(File(staged, "node_modules/@deepseek-ai/dsh/lib/bin.js").isFile)
@@ -61,6 +62,8 @@ class NpmInstallWithoutSizeProbeTest {
                 assertFalse(File(staged, ".dsh-probe.cjs").exists())
                 assertFalse(File(staged, ".dsh-sized.json").exists())
                 assertTrue(phases.none { it.contains("测量依赖") })
+                assertTrue("必须复用持久缓存或已安装程序的依赖锁", phases.any { it.startsWith("复用") && it.contains("依赖锁") })
+                assertTrue("同版本已验证锁不应重新联网解析", phases.none { it.startsWith("解析 DSH 依赖") })
                 val archives = JSONObject(File(staged, ".dsh-downloaded.json").readText()).getJSONArray("archives")
                 assertTrue(archives.length() > 0)
                 for (index in 0 until archives.length()) {
@@ -75,7 +78,7 @@ class NpmInstallWithoutSizeProbeTest {
                 assertTrue(progress.all { it.received >= 0 && (it.total < 0 || it.received <= it.total) })
                 assertEquals(beforeHash, Downloader.hash(lock))
                 assertEquals(beforeMarker, File(current, ".installed").readText())
-                Log.i("TANUKI_PROBE", "NPM_NO_SIZE_PROBE official_install=true archives=${archives.length()} sha512=true unknown_progress=true live_engine_unchanged=true model=false")
+                Log.i("TANUKI_PROBE", "NPM_NO_SIZE_PROBE official_install=true archives=${archives.length()} sha512=true lock_reused=true metadata_resolution=false unknown_progress=true live_engine_unchanged=true model=false")
             }
         } finally {
             watcher.cancelAndJoin()

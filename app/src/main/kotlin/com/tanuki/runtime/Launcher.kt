@@ -245,6 +245,6 @@ class Launcher(private val context: Context, private val paths: Paths, private v
     }
     suspend fun run(root: File, args: List<String>, timeoutMs: Long = 120000, home: File = paths.home, dshHome: File = paths.dshData, workspace: File = paths.workspaces, engineHome: File = paths.engines, nodeHome: File? = null, onLine: (String) -> Unit = {}): CommandResult {
         val child = start(root, args, home, dshHome, workspace, engineHome, nodeHome)
-        return try { withTimeout(timeoutMs) { collect(child,onLine) } } finally { if (child.process.isAlive) child.stop() }
+        return try { withCommandDeadline(timeoutMs) { collect(child,onLine) } } finally { if (child.process.isAlive) child.stop() }
     }
 }
