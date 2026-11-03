@@ -2,7 +2,6 @@ package com.tanuki.ui
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -118,7 +117,7 @@ fun RuntimeComponentCard(
                 .semantics {
                     stateDescription = if (isExpanded) "已展开" else "已收起"
                 }
-                .padding(horizontal = 16.dp, vertical = 12.dp)
+                .padding(horizontal = 20.dp, vertical = 16.dp)
         ) {
             Column(Modifier.weight(1f)) {
                 Text(
@@ -165,7 +164,12 @@ fun RuntimeComponentCard(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(start = 16.dp, top = if(model.guided)16.dp else 0.dp, end = 16.dp, bottom = 16.dp)
+                    .padding(
+                        start = if (model.guided) 0.dp else 20.dp,
+                        top = 0.dp,
+                        end = if (model.guided) 0.dp else 20.dp,
+                        bottom = if (model.guided) 0.dp else 20.dp,
+                    )
             ) {
                 if (!model.guided && model.dependencyHint.isNotBlank()) {
                     Text(
@@ -220,9 +224,10 @@ fun RuntimeComponentCard(
                         } else Button(
                             onClick = onReinstall,
                             enabled = canAct,
+                            shape = MaterialTheme.shapes.large,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .heightIn(min = 48.dp)
+                                .heightIn(min = 56.dp)
                         ) { Text(reinstallLabel) }
                         if (!model.guided) TextButton(
                             onClick = onUninstall,
@@ -238,9 +243,10 @@ fun RuntimeComponentCard(
                         Button(
                             onClick = onInstall,
                             enabled = canAct,
+                            shape = MaterialTheme.shapes.large,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .heightIn(min = 48.dp)
+                                .heightIn(min = 56.dp)
                         ) {
                             Text(if (busy) "进行中…" else if(model.guided)"安装 ${model.title}" else "安装")
                         }
@@ -262,19 +268,18 @@ private fun SelectorSurface(
     Surface(
         onClick = { if (enabled) onOpen() },
         enabled = enabled,
-        shape = MaterialTheme.shapes.medium,
-        color = cs.surface,
-        border = BorderStroke(1.dp, cs.outlineVariant),
+        shape = MaterialTheme.shapes.large,
+        color = cs.surfaceContainerLow,
         modifier = Modifier
             .fillMaxWidth()
-            .heightIn(min = 48.dp)
+            .heightIn(min = 52.dp)
             .alpha(if (enabled) 1f else 0.38f)
             .semantics { contentDescription = "$label：$value" }
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
         ) {
             Column(Modifier.weight(1f)) {
                 Text(
@@ -310,7 +315,7 @@ private fun VersionSelector(
     var open by remember { mutableStateOf(false) }
     val current = options.firstOrNull { it.id == selectedVersion }
     val currentLabel = current?.title ?: label
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Box {
             SelectorSurface(
                 label = label,
@@ -425,27 +430,29 @@ private fun SourceSelector(
 fun ComponentDownloadProgress(p: ComponentProgressModel) {
     val known=p.total>0
     val percent=if(known)(p.received.toDouble()/p.total*100).toInt().coerceIn(0,100) else null
-    Column(verticalArrangement=Arrangement.spacedBy(12.dp)) {
-        Text(p.label,style=MaterialTheme.typography.titleMedium)
-        Text(if(p.reused)"使用已校验的本地缓存" else p.source,
-            style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
-        if(known) {
-            Text("$percent%",style=MaterialTheme.typography.headlineLarge,fontFamily=FontFamily.Monospace,
-                fontWeight=FontWeight.SemiBold,color=MaterialTheme.colorScheme.primary)
-            LinearProgressIndicator(progress={percent!!.toFloat()/100f},modifier=Modifier.fillMaxWidth().semantics {
-                contentDescription="下载进度 $percent%，已接收 ${byteSize(p.received)}，共 ${byteSize(p.total)}"
-            })
-            Text("${byteSize(p.received)} / ${byteSize(p.total)}",style=MaterialTheme.typography.bodyMedium)
-        } else {
-            LinearProgressIndicator(modifier=Modifier.fillMaxWidth().semantics {
-                contentDescription="下载进行中，总大小未知"
-            })
-            Text("总大小未知 · 已接收 ${byteSize(p.received)}",style=MaterialTheme.typography.bodyMedium)
-        }
-        if(p.bytesPerSecond>0) {
-            val seconds=if(known)((p.total-p.received).coerceAtLeast(0)/p.bytesPerSecond) else 0
-            Text("${byteSize(p.bytesPerSecond)}/s"+(if(seconds>0)" · 约剩余 ${etaText(seconds)}" else ""),
+    Surface(shape=MaterialTheme.shapes.large,color=MaterialTheme.colorScheme.surfaceContainerLow) {
+        Column(Modifier.padding(18.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
+            Text(p.label,style=MaterialTheme.typography.titleMedium)
+            Text(if(p.reused)"使用已校验的本地缓存" else p.source,
                 style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
+            if(known) {
+                Text("$percent%",style=MaterialTheme.typography.headlineLarge,fontFamily=FontFamily.Monospace,
+                    fontWeight=FontWeight.SemiBold,color=MaterialTheme.colorScheme.primary)
+                LinearProgressIndicator(progress={percent!!.toFloat()/100f},modifier=Modifier.fillMaxWidth().semantics {
+                    contentDescription="下载进度 $percent%，已接收 ${byteSize(p.received)}，共 ${byteSize(p.total)}"
+                })
+                Text("${byteSize(p.received)} / ${byteSize(p.total)}",style=MaterialTheme.typography.bodyMedium)
+            } else {
+                LinearProgressIndicator(modifier=Modifier.fillMaxWidth().semantics {
+                    contentDescription="下载进行中，总大小未知"
+                })
+                Text("总大小未知 · 已接收 ${byteSize(p.received)}",style=MaterialTheme.typography.bodyMedium)
+            }
+            if(p.bytesPerSecond>0) {
+                val seconds=if(known)((p.total-p.received).coerceAtLeast(0)/p.bytesPerSecond) else 0
+                Text("${byteSize(p.bytesPerSecond)}/s"+(if(seconds>0)" · 约剩余 ${etaText(seconds)}" else ""),
+                    style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
+            }
         }
     }
 }

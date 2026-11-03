@@ -121,13 +121,14 @@ fun AgentBrowserPage(controller: AgentBrowserController, modifier: Modifier = Mo
     BackHandler(enabled = fullscreen || screen != null || showFind || (state.canGoBack && !state.closed)) {
         when { fullscreen -> onFullscreen(false); screen != null -> back(); showFind -> { showFind = false; controller.clearFind() }; else -> controller.back() }
     }
-    if (screen == null) Surface(interactionModifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
+    if (screen == null) Surface(interactionModifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize().imePadding()) {
             if (!fullscreen) Row(Modifier.fillMaxWidth().zIndex(1f).padding(horizontal = 12.dp, vertical = 6.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 OutlinedTextField(address, { controller.noteHumanInteraction(); address = it.take(8192) }, Modifier.weight(1f).focusRequester(addressFocus)
-                    .semantics { contentDescription = "网址输入框" }, label = { Text("搜索或输入网址", maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                    .semantics { contentDescription = "网址输入框" }, shape = MaterialTheme.shapes.extraLarge,
+                    label = { Text("搜索或输入网址", maxLines = 1, overflow = TextOverflow.Ellipsis) },
                     placeholder = { Text("${BrowserSearchEngine.from(library.searchEngine).title}搜索 / example.com", maxLines = 1, overflow = TextOverflow.Ellipsis) },
                     singleLine = true, enabled = !state.closed && !state.rendererFailed,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Go), keyboardActions = KeyboardActions(onGo = { open() }))
@@ -137,7 +138,7 @@ fun AgentBrowserPage(controller: AgentBrowserController, modifier: Modifier = Mo
             }
             if (showFind && !fullscreen) Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 OutlinedTextField(findText, { controller.noteHumanInteraction(); findText = it.take(200); controller.find(findText) }, Modifier.weight(1f).semantics { contentDescription = "页内查找输入框" }, singleLine = true,
-                    label = { Text("页内查找") }, supportingText = { Text("${state.findIndex} / ${state.findCount}") })
+                    shape = MaterialTheme.shapes.large, label = { Text("页内查找") }, supportingText = { Text("${state.findIndex} / ${state.findCount}") })
                 IconButton(onClick = { controller.findNext(false) }, enabled = state.findCount > 0) { Icon(Icons.Default.KeyboardArrowUp, "上一个匹配") }
                 IconButton(onClick = { controller.findNext(true) }, enabled = state.findCount > 0) { Icon(Icons.Default.KeyboardArrowDown, "下一个匹配") }
                 IconButton(onClick = { showFind = false; controller.clearFind() }) { Icon(Icons.Default.Close, "关闭查找") }
@@ -174,31 +175,42 @@ fun AgentBrowserPage(controller: AgentBrowserController, modifier: Modifier = Mo
                 }
                 if (state.overlayFrame == null && state.url.isEmpty() && !state.rendererFailed) Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(Icons.Default.Public, null, Modifier.size(40.dp), tint = MaterialTheme.colorScheme.primary)
-                    Text("开始浏览", style = MaterialTheme.typography.titleLarge)
+                    Surface(shape = MaterialTheme.shapes.extraLarge, color = MaterialTheme.colorScheme.primaryContainer) {
+                        Box(Modifier.size(68.dp), contentAlignment = Alignment.Center) {
+                            Icon(Icons.Default.Public, null, Modifier.size(34.dp), tint = MaterialTheme.colorScheme.primary)
+                        }
+                    }
+                    Text("开始浏览", style = MaterialTheme.typography.headlineSmall)
                     if (fullscreen) FilledTonalButton(onClick = { onFullscreen(false) }) { Text("退出全屏后输入网址") }
                     else FilledTonalButton(onClick = { addressFocus.requestFocus(); keyboard?.show() }) { Text("搜索或输入网址") }
                     Text("${BrowserSearchEngine.from(library.searchEngine).title} · 收藏、历史和下载在底部菜单", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
-            if (!fullscreen) Row(Modifier.fillMaxWidth().padding(start = 12.dp, end = 4.dp).heightIn(min = 36.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(if (state.authorizedClient != null) Icons.Default.SmartToy else Icons.Default.Person, null, Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary)
-                Text(if (state.takeoverRequested) "AI 已暂停，等待你的选择" else if (state.authorizedClient != null) "AI 可操作 · 点网页可临时接管"
-                    else state.idleReturnSeconds?.let { "你在操作 · ${it}秒未操作后交回 AI" } ?: "AI 权限已撤销 · 不自动恢复",
-                    Modifier.weight(1f).padding(horizontal = 8.dp), style = MaterialTheme.typography.labelSmall)
-                TextButton(onClick = { if (state.authorizedClient != null) controller.takeControl() else controller.grantConnection() }, enabled = !state.closed && !state.rendererFailed) {
-                    Text(if (state.authorizedClient != null) "撤销 AI 权限" else "交回 AI", style = MaterialTheme.typography.labelLarge)
+            if (!fullscreen) Surface(color = MaterialTheme.colorScheme.surfaceContainerLow) {
+                Row(Modifier.fillMaxWidth().padding(start = 12.dp, end = 4.dp).heightIn(min = 44.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(if (state.authorizedClient != null) Icons.Default.SmartToy else Icons.Default.Person, null, Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary)
+                    Text(if (state.takeoverRequested) "AI 已暂停，等待你的选择" else if (state.authorizedClient != null) "AI 可操作 · 点网页可临时接管"
+                        else state.idleReturnSeconds?.let { "你在操作 · ${it}秒未操作后交回 AI" } ?: "AI 权限已撤销 · 不自动恢复",
+                        Modifier.weight(1f).padding(horizontal = 8.dp), style = MaterialTheme.typography.labelSmall)
+                    TextButton(onClick = { if (state.authorizedClient != null) controller.takeControl() else controller.grantConnection() }, enabled = !state.closed && !state.rendererFailed) {
+                        Text(if (state.authorizedClient != null) "撤销 AI 权限" else "交回 AI", style = MaterialTheme.typography.labelLarge)
+                    }
                 }
             }
-            if (!fullscreen) HorizontalDivider()
-            if (!fullscreen) Row(Modifier.fillMaxWidth().heightIn(min = 48.dp), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = controller::back, enabled = state.canGoBack) { Icon(Icons.Default.ArrowBack, "后退") }
-                IconButton(onClick = controller::forward, enabled = state.canGoForward) { Icon(Icons.Default.ArrowForward, "前进") }
-                IconButton(onClick = controller::reload, enabled = state.url.isNotEmpty()) { Icon(Icons.Default.Refresh, "刷新网页") }
-                TextButton(onClick = { showPage("页面总览") }, modifier = Modifier.semantics { contentDescription = "页面总览" }) {
-                    Icon(Icons.Default.Tab, null, Modifier.size(20.dp)); Text(" ${state.tabs.size}")
+            if (!fullscreen) Surface(
+                shape = MaterialTheme.shapes.extraLarge,
+                color = MaterialTheme.colorScheme.surfaceContainerLow,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+            ) {
+                Row(Modifier.fillMaxWidth().heightIn(min = 52.dp), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = controller::back, enabled = state.canGoBack) { Icon(Icons.Default.ArrowBack, "后退") }
+                    IconButton(onClick = controller::forward, enabled = state.canGoForward) { Icon(Icons.Default.ArrowForward, "前进") }
+                    IconButton(onClick = controller::reload, enabled = state.url.isNotEmpty()) { Icon(Icons.Default.Refresh, "刷新网页") }
+                    TextButton(onClick = { showPage("页面总览") }, modifier = Modifier.semantics { contentDescription = "页面总览" }) {
+                        Icon(Icons.Default.Tab, null, Modifier.size(20.dp)); Text(" ${state.tabs.size}")
+                    }
+                    IconButton(onClick = { menu = "main" }) { Icon(Icons.Default.Menu, "浏览器菜单") }
                 }
-                IconButton(onClick = { menu = "main" }) { Icon(Icons.Default.Menu, "浏览器菜单") }
             }
         }
         if (fullscreen) Surface(shape = androidx.compose.foundation.shape.RoundedCornerShape(25.dp),
@@ -219,8 +231,8 @@ fun AgentBrowserPage(controller: AgentBrowserController, modifier: Modifier = Mo
                 Text("${state.tabs.size} 个页面 · 最多 12 个", Modifier.padding(16.dp), style = MaterialTheme.typography.bodySmall)
                 LazyVerticalGrid(columns = GridCells.Adaptive(144.dp), modifier = Modifier.weight(1f).padding(horizontal = 12.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    items(state.tabs, key = { it.id }) { tab -> Surface(shape = MaterialTheme.shapes.medium,
-                        color = if (tab.id == state.activeTab) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceVariant) {
+                    items(state.tabs, key = { it.id }) { tab -> Surface(shape = MaterialTheme.shapes.large,
+                        color = if (tab.id == state.activeTab) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerLow) {
                         Column {
                             Column(Modifier.fillMaxWidth().clickable { controller.selectTab(tab.id); screen = null }.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 val preview = remember(tab.id, tab.url) { controller.thumbnail(tab.id) }

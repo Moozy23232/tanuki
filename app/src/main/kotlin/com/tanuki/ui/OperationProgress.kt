@@ -3,6 +3,7 @@ package com.tanuki.ui
 import android.os.SystemClock
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -40,8 +41,13 @@ internal fun OperationBanner(snapshot: Snapshot, transfers: List<FileTransferPro
     }
     if (items.isEmpty()) return
     var details by remember { mutableStateOf(false) }
-    Surface(color = MaterialTheme.colorScheme.surfaceContainer, modifier = modifier.fillMaxWidth()) {
-        Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        shape = RoundedCornerShape(26.dp),
+        shadowElevation = 1.dp,
+        modifier = modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
+    ) {
+        Column(Modifier.padding(horizontal = 16.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(items.first().title, Modifier.weight(1f).padding(top = 10.dp),
                     style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
@@ -85,8 +91,18 @@ private fun ProgressBody(item: ProgressItem, compact: Boolean) {
         contentDescription = "操作进度"
         stateDescription = if (percent == null) "进行中，无法估算百分比" else "当前阶段 $percent%"
     }
-    if (item.fraction != null) LinearProgressIndicator(progress = { item.fraction }, modifier = progressModifier)
-    else LinearProgressIndicator(modifier = progressModifier)
+    val colors = MaterialTheme.colorScheme
+    if (item.fraction != null) LinearProgressIndicator(
+        progress = { item.fraction },
+        modifier = progressModifier,
+        color = colors.primary,
+        trackColor = colors.primaryContainer,
+    )
+    else LinearProgressIndicator(
+        modifier = progressModifier,
+        color = colors.primary,
+        trackColor = colors.primaryContainer,
+    )
     Text("已用 ${duration(elapsed)} · " + when (percent) {
         null -> "进度暂不可估算"
         100 -> "当前阶段 100%，继续处理"
