@@ -1,8 +1,11 @@
 package com.tanuki.ui
 
+import android.os.Build
 import android.view.ViewGroup
 import android.webkit.WebView
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -33,6 +36,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -49,6 +53,9 @@ import com.tanuki.storage.WorkspaceStorageState
 import com.tanuki.update.Release
 import com.tanuki.web.WebViewSupport
 import com.tanuki.web.WebViewSupportState
+import dev.chrisbanes.haze.HazeDefaults
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.haze
 import java.util.Locale
 
 /** Presentation only. The host owns permissions, confirmations, jobs and WebView lifetime. */
@@ -165,17 +172,31 @@ fun TanukiUi(model: TanukiUiModel, callbacks: TanukiUiCallbacks, browserView: We
     }
     BackHandler(tab == 4) { settingsBack() }
     val destinations = TanukiDestination.entries.take(4)
+    val hazeState = remember { HazeState() }
+    val layoutDirection = LocalLayoutDirection.current
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val wide = maxWidth >= 840.dp
+        // 只捕获原生滚动内容；网页保留原渲染链，旧系统使用高可读性的材质降级。
+        val nativeGlass = !wide && (tab == 0 || tab == 4) && Build.VERSION.SDK_INT >= 32
         Row(Modifier.fillMaxSize()) {
-            if (wide && !activeFullscreen) NavigationRail(containerColor = MaterialTheme.colorScheme.surface,
+            if (wide && !activeFullscreen) NavigationRail(containerColor = Color.Transparent,
                 modifier = Modifier.fillMaxHeight().width(96.dp)) {
-                Spacer(Modifier.height(24.dp))
-                destinations.forEachIndexed { index, destination ->
-                    NavigationRailItem(selected = tab == index, onClick = { navigate(index) },
-                        icon = { TanukiIcon(destination.glyph, destination.title) }, label = { Text(destination.title) },
-                        colors = NavigationRailItemDefaults.colors(indicatorColor = MaterialTheme.colorScheme.primaryContainer))
-                    Spacer(Modifier.height(12.dp))
+                Spacer(Modifier.height(20.dp))
+                Surface(shape = MaterialTheme.shapes.extraLarge, color = MaterialTheme.colorScheme.surfaceContainerLow) {
+                    Column(Modifier.padding(vertical = 12.dp)) {
+                        destinations.forEachIndexed { index, destination ->
+                            NavigationRailItem(selected = tab == index, onClick = { navigate(index) },
+                                icon = { TanukiIcon(destination.glyph, destination.title) }, label = { Text(destination.title) },
+                                colors = NavigationRailItemDefaults.colors(
+                                    selectedIconColor = MaterialTheme.colorScheme.primary,
+                                    selectedTextColor = MaterialTheme.colorScheme.primary,
+                                    unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    indicatorColor = MaterialTheme.colorScheme.primaryContainer,
+                                ))
+                            Spacer(Modifier.height(8.dp))
+                        }
+                    }
                 }
             }
             Scaffold(modifier = Modifier.weight(1f), containerColor = MaterialTheme.colorScheme.background,
@@ -185,14 +206,20 @@ fun TanukiUi(model: TanukiUiModel, callbacks: TanukiUiCallbacks, browserView: We
                         if (tab != 1 && !activeFullscreen) TanukiHeader(tab, if (tab == 4) settingsSection ?: "设置" else TanukiDestination.entries[tab].title, callbacks,
                             s.service in setOf(ServiceState.STARTING, ServiceState.RUNNING),
                             settings = ::openSettings, back = ::settingsBack)
-                        if (browserRequest && tab != 3) Surface(color = MaterialTheme.colorScheme.secondaryContainer) {
-                            Row(Modifier.fillMaxWidth().then(if (tab == 1) Modifier.statusBarsPadding() else Modifier).padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                        if (browserRequest && tab != 3) Surface(
+                            color = MaterialTheme.colorScheme.secondaryContainer,
+                            contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                        ) {
+                            Row(Modifier.fillMaxWidth().then(if (tab == 1) Modifier.statusBarsPadding() else Modifier).padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Text("网页操作待授权", Modifier.weight(1f), style = MaterialTheme.typography.labelLarge)
                                 TextButton(onClick = { navigate(3) }) { Text("查看请求") }
                             }
                         }
-                        if (browserAuthorized && tab != 3) Surface(color = MaterialTheme.colorScheme.secondaryContainer) {
-                            Row(Modifier.fillMaxWidth().then(if (tab == 1 && !browserRequest) Modifier.statusBarsPadding() else Modifier).padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                        if (browserAuthorized && tab != 3) Surface(
+                            color = MaterialTheme.colorScheme.secondaryContainer,
+                            contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                        ) {
+                            Row(Modifier.fillMaxWidth().then(if (tab == 1 && !browserRequest) Modifier.statusBarsPadding() else Modifier).padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Text("AI 已获浏览器权限 · 后台有效", Modifier.weight(1f), style = MaterialTheme.typography.labelMedium)
                                 TextButton(onClick = callbacks.revokeBrowser) { Text("撤销 AI") }
                             }
@@ -202,16 +229,16 @@ fun TanukiUi(model: TanukiUiModel, callbacks: TanukiUiCallbacks, browserView: We
                                 else if (tab == 1 && !browserRequest && !browserAuthorized) Modifier.statusBarsPadding() else Modifier)
                     }
                 }, bottomBar = {
-                    if (!wide && !activeFullscreen) NavigationBar(containerColor = MaterialTheme.colorScheme.surface, tonalElevation = 0.dp) {
-                        destinations.forEachIndexed { index, destination ->
-                            NavigationBarItem(selected = tab == index, onClick = { navigate(index) },
-                                icon = { TanukiIcon(destination.glyph, destination.title) }, label = { Text(destination.title, style = MaterialTheme.typography.labelMedium) },
-                                colors = NavigationBarItemDefaults.colors(
-                                    selectedIconColor = MaterialTheme.colorScheme.primary,
-                                    selectedTextColor = MaterialTheme.colorScheme.onSurface,
-                                    unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    indicatorColor = MaterialTheme.colorScheme.primaryContainer))
+                    if (!wide && !activeFullscreen) Column(
+                        Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 16.dp, vertical = 8.dp)
+                    ) {
+                        GlassNavigationBar(
+                            selectedIndex = tab,
+                            labels = destinations.map { it.title },
+                            onSelect = ::navigate,
+                            hazeState = if (nativeGlass) hazeState else null,
+                        ) { index, tint ->
+                            TanukiIcon(destinations[index].glyph, destinations[index].title, tint = tint)
                         }
                     }
                 }) { padding ->
@@ -226,10 +253,24 @@ fun TanukiUi(model: TanukiUiModel, callbacks: TanukiUiCallbacks, browserView: We
                     2 -> pageStates.SaveableStateProvider("files") { filesPage(pageModifier) }
                     3 -> pageStates.SaveableStateProvider("browser") { agentBrowserPage(pageModifier, browserFullscreen, { browserFullscreen = it }) }
                     else -> key(tab, settingsSection.takeIf { tab == 4 }) {
-                        Box(pageModifier) {
-                            Column(Modifier.align(Alignment.TopCenter).widthIn(max = 760.dp).fillMaxSize().imePadding()
-                                .verticalScroll(rememberScrollState()).padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 24.dp),
-                                verticalArrangement = Arrangement.spacedBy(24.dp)) {
+                        // 原生内容可滚到玻璃后方，尾部仍预留导航高度，避免最后一项被遮挡。
+                        val nativeModifier = if (nativeGlass) Modifier.fillMaxSize().padding(
+                            start = padding.calculateStartPadding(layoutDirection),
+                            top = padding.calculateTopPadding(),
+                            end = padding.calculateEndPadding(layoutDirection),
+                        ).consumeWindowInsets(padding).haze(
+                            hazeState,
+                            HazeDefaults.style(
+                                tint = MaterialTheme.colorScheme.surface.copy(alpha = 0.22f),
+                                blurRadius = 18.dp,
+                                noiseFactor = 0.035f,
+                            ),
+                        ) else pageModifier
+                        val bottomSpace = 32.dp + if (nativeGlass) padding.calculateBottomPadding() else 0.dp
+                        Box(nativeModifier.background(tanukiPageBrush())) {
+                            Column(Modifier.align(Alignment.TopCenter).widthIn(max = 760.dp).fillMaxSize().tanukiEnter().imePadding()
+                                .verticalScroll(rememberScrollState()).padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = bottomSpace),
+                                verticalArrangement = Arrangement.spacedBy(28.dp)) {
                                 if (tab == 0) Overview(model, callbacks, openDsh = { tab = 1 })
                                 else SettingsPage(model, callbacks, settingsSection) { settingsSection = it }
                             }
@@ -252,12 +293,13 @@ fun TanukiUi(model: TanukiUiModel, callbacks: TanukiUiCallbacks, browserView: We
 private fun TanukiHeader(tab: Int, title: String, c: TanukiUiCallbacks, stoppable: Boolean,
                          settings: () -> Unit, back: () -> Unit) {
     Surface(color = MaterialTheme.colorScheme.background) {
-        Row(Modifier.statusBarsPadding().fillMaxWidth().heightIn(min=56.dp).padding(horizontal = 16.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.statusBarsPadding().fillMaxWidth().heightIn(min = 60.dp).padding(horizontal = 16.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically) {
             if (tab == 4) IconButton(onClick = back) { TanukiIcon(TanukiGlyph.Back, "返回上一页") }
             if (tab == 0) {
-                Surface(shape = MaterialTheme.shapes.small, color = MaterialTheme.colorScheme.primaryContainer) {
-                    Box(Modifier.size(36.dp), contentAlignment = Alignment.Center) {
-                        TanukiIcon(TanukiGlyph.Terminal, tint = MaterialTheme.colorScheme.onPrimaryContainer, modifier = Modifier.size(22.dp))
+                Surface(shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.primaryContainer) {
+                    Box(Modifier.size(38.dp), contentAlignment = Alignment.Center) {
+                        TanukiIcon(TanukiGlyph.Terminal, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(21.dp))
                     }
                 }
                 Spacer(Modifier.width(12.dp))
@@ -296,7 +338,7 @@ internal fun WebViewCard(support: WebViewSupport, idle: Boolean, c: TanukiUiCall
             Text("Chromium ${support.chromium ?: support.version} → 123+", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
             Caption(if (support.missing.isNotEmpty()) "实测缺失：${support.missing.joinToString("、")}" else "${cssResult("subgrid", support.subgrid)} · ${cssResult("light-dark()", support.lightDark)}")
             Caption("先保存任务并停止 DSH；更新内核可能关闭其他使用它的应用。")
-            Button(onClick = c.updateWebView, enabled = idle, shape = RoundedCornerShape(12.dp)) { Text("官方更新入口") }
+            Button(onClick = c.updateWebView, enabled = idle, shape = MaterialTheme.shapes.medium) { Text("官方更新入口") }
             if (!idle) Caption("停止服务并等待当前操作完成后可更新。")
         } else {
             Caption(if (support.state == WebViewSupportState.FAILED) support.error.ifBlank { "请重新检测渲染能力。" } else "需要 Chromium 123+，并实测支持 subgrid 与 light-dark()。")
@@ -331,7 +373,10 @@ internal fun EnvironmentSection(model: TanukiUiModel, c: TanukiUiCallbacks, guid
     val dshSwitching = s.update in setOf(UpdateState.STAGING, UpdateState.TESTING, UpdateState.BACKUP, UpdateState.SWITCHING)
     Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
     if(!guided)Text("运行组件",Modifier.padding(start=16.dp),style=MaterialTheme.typography.labelLarge,color=MaterialTheme.colorScheme.onSurfaceVariant)
-    Surface(shape=MaterialTheme.shapes.large,color=MaterialTheme.colorScheme.surface) {
+    Surface(
+        shape=MaterialTheme.shapes.extraLarge,
+        color=if(guided)Color.Transparent else MaterialTheme.colorScheme.surfaceContainerLow,
+    ) {
     Column {
     if(guideStep==null || guideStep==0)RuntimeComponentCard(
         model = RuntimeComponentCardModel(
@@ -513,10 +558,18 @@ private fun SettingsPage(model: TanukiUiModel, c: TanukiUiCallbacks, section: St
             "运行与后台" to "通知权限、电池设置与后台运行",
             "网页与兼容性" to "WebView 内核更新与能力检测",
             "高级与关于" to "兼容选项、缓存与许可来源")
-        Surface(Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.surface, shape = MaterialTheme.shapes.large) {
+        Column(Modifier.padding(horizontal = 4.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("工作空间偏好", style = MaterialTheme.typography.headlineMedium)
+            Caption("存储、项目、运行与网页能力，按主题集中管理。")
+        }
+        Surface(
+            Modifier.fillMaxWidth(),
+            color = MaterialTheme.colorScheme.surfaceContainerLow,
+            shape = MaterialTheme.shapes.extraLarge,
+        ) {
             Column { categories.forEachIndexed { index, (title, detail) ->
-                ActionRow(title, detail) { select(title) }
-                if (index != categories.lastIndex) HorizontalDivider(Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant)
+                ActionRow(title, detail, contentPadding = PaddingValues(horizontal = 20.dp, vertical = 12.dp)) { select(title) }
+                if (index != categories.lastIndex) HorizontalDivider(Modifier.padding(horizontal = 20.dp), color = MaterialTheme.colorScheme.outlineVariant)
             } }
         }
         return
@@ -588,8 +641,12 @@ private fun SettingsGroup(title: String, content: @Composable ColumnScope.() -> 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(title, Modifier.padding(horizontal = 4.dp), style = MaterialTheme.typography.titleSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surface, modifier = Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp), content = content)
+        Surface(
+            shape = MaterialTheme.shapes.extraLarge,
+            color = MaterialTheme.colorScheme.surfaceContainerLow,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Column(Modifier.padding(horizontal = 20.dp, vertical = 6.dp), content = content)
         }
     }
 }
@@ -680,9 +737,10 @@ private fun DshPage(model: TanukiUiModel, c: TanukiUiCallbacks, browser: WebView
 private fun ComponentDisclosure(title:String,version:String,installed:Boolean,forceExpanded:Boolean=false,guided:Boolean=false,content:@Composable ColumnScope.()->Unit) {
     var expanded by rememberSaveable(title) { mutableStateOf(false) }
     LaunchedEffect(forceExpanded) { if(forceExpanded)expanded=true }
+    val rotation by animateFloatAsState(targetValue=if(expanded)90f else 0f,label="componentChevron")
     Column(Modifier.fillMaxWidth()) {
         if(!guided)Row(Modifier.fillMaxWidth().clickable(role=Role.Button,onClickLabel=if(expanded)"收起$title" else "展开$title") { expanded=forceExpanded || !expanded }
-            .semantics { stateDescription=if(expanded)"已展开" else "已收起" }.padding(horizontal=16.dp,vertical=12.dp),
+            .semantics { stateDescription=if(expanded)"已展开" else "已收起" }.padding(horizontal=20.dp,vertical=16.dp),
             verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
             Column(Modifier.weight(1f)) {
                 Text(title,style=MaterialTheme.typography.titleMedium)
@@ -690,17 +748,23 @@ private fun ComponentDisclosure(title:String,version:String,installed:Boolean,fo
             }
             StatusPill(if(installed)"已安装" else "未安装",installed)
             Box(Modifier.size(48.dp),contentAlignment=Alignment.Center) {
-                TanukiIcon(TanukiGlyph.Chevron,modifier=Modifier.size(20.dp).rotate(if(expanded)90f else 0f),tint=MaterialTheme.colorScheme.onSurfaceVariant)
+                TanukiIcon(TanukiGlyph.Chevron,modifier=Modifier.size(20.dp).rotate(rotation),tint=MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
-        if(expanded || guided)Column(Modifier.padding(start=16.dp,top=if(guided)16.dp else 0.dp,end=16.dp,bottom=16.dp),verticalArrangement=Arrangement.spacedBy(12.dp),content=content)
+        AnimatedVisibility(visible=expanded || guided) {
+            Column(Modifier.padding(start=if(guided)0.dp else 20.dp,end=if(guided)0.dp else 20.dp,bottom=if(guided)0.dp else 20.dp),verticalArrangement=Arrangement.spacedBy(12.dp),content=content)
+        }
     }
 }
 
 @Composable
 private fun TanukiCard(content: @Composable ColumnScope.() -> Unit) {
-    Surface(shape=MaterialTheme.shapes.medium,color=MaterialTheme.colorScheme.surface,modifier=Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(12.dp),content=content)
+    Surface(
+        shape=MaterialTheme.shapes.extraLarge,
+        color=MaterialTheme.colorScheme.surfaceContainerLow,
+        modifier=Modifier.fillMaxWidth(),
+    ) {
+        Column(Modifier.padding(22.dp),verticalArrangement=Arrangement.spacedBy(14.dp),content=content)
     }
 }
 
@@ -718,7 +782,7 @@ private fun Fact(name: String, value: String) {
 @Composable
 internal fun StatusPill(text: String, active: Boolean) {
     Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-        Box(Modifier.size(6.dp).background(if(active)MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,RoundedCornerShape(50)))
+        Box(Modifier.size(7.dp).background(if(active)MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,RoundedCornerShape(50)))
         Text(text,style=MaterialTheme.typography.labelMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
@@ -732,9 +796,10 @@ private fun StopButton(c: TanukiUiCallbacks, enabled: Boolean) {
 }
 
 @Composable
-private fun ActionRow(title: String, detail: String? = null, enabled: Boolean = true, onClick: () -> Unit) {
+private fun ActionRow(title: String, detail: String? = null, enabled: Boolean = true,
+                      contentPadding: PaddingValues = PaddingValues(vertical = 12.dp), onClick: () -> Unit) {
     Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).clickable(enabled = enabled, role = Role.Button, onClick = onClick)
-        .padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+        .padding(contentPadding), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f).padding(end = 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(title, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface.copy(alpha = if (enabled) 1f else 0.45f))
             if (detail != null) Caption(detail)
@@ -746,13 +811,16 @@ private fun ActionRow(title: String, detail: String? = null, enabled: Boolean = 
 @Composable
 private fun TanukiDetails(title: String, content: @Composable ColumnScope.() -> Unit) {
     var expanded by rememberSaveable { mutableStateOf(false) }
-    Column(verticalArrangement=Arrangement.spacedBy(if(expanded)12.dp else 0.dp)) {
+    val rotation by animateFloatAsState(targetValue=if(expanded)90f else 0f,label="detailsChevron")
+    Column {
         Row(Modifier.fillMaxWidth().heightIn(min=48.dp).clickable(role=Role.Button,onClickLabel=if(expanded)"收起" else "展开") { expanded=!expanded }
             .semantics { stateDescription=if(expanded)"已展开" else "已收起" },verticalAlignment=Alignment.CenterVertically) {
-            Text(title,Modifier.weight(1f),style=MaterialTheme.typography.bodyLarge)
-            TanukiIcon(TanukiGlyph.Chevron,modifier=Modifier.size(20.dp).rotate(if(expanded)90f else 0f),tint=MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(title,Modifier.weight(1f),style=MaterialTheme.typography.titleMedium)
+            TanukiIcon(TanukiGlyph.Chevron,modifier=Modifier.size(20.dp).rotate(rotation),tint=MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        if(expanded)content()
+        AnimatedVisibility(visible=expanded) {
+            Column(Modifier.padding(top=12.dp),verticalArrangement=Arrangement.spacedBy(12.dp),content=content)
+        }
     }
 }
 

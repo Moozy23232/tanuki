@@ -11,21 +11,37 @@ import android.view.ViewGroup
 import android.view.accessibility.AccessibilityNodeInfo
 import android.webkit.WebView
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.unit.dp
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.webkit.WebSettingsCompat
 import androidx.webkit.WebViewFeature
 import com.tanuki.runtime.*
 import com.tanuki.storage.WorkspaceStorageState
+import com.tanuki.ui.GlassNavigationBar
+import com.tanuki.ui.TanukiGlyph
+import com.tanuki.ui.TanukiIcon
 import com.tanuki.ui.TanukiTheme
 import com.tanuki.ui.TanukiUi
 import com.tanuki.ui.TanukiUiCallbacks
@@ -34,6 +50,9 @@ import com.tanuki.update.Release
 import com.tanuki.web.DshWebView
 import com.tanuki.web.WebViewSupport
 import com.tanuki.web.WebViewSupportState
+import dev.chrisbanes.haze.HazeDefaults
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.haze
 import org.json.JSONObject
 import org.json.JSONTokener
 import org.junit.Assert.*
@@ -78,14 +97,24 @@ class SetupPresentationTest {
     private fun matches(node: AccessibilityNodeInfo, text: String) =
         node.text?.toString() == text || node.contentDescription?.toString() == text
     private fun find(text: String): AccessibilityNodeInfo {
-        repeat(35) {
+        var revealRequested = false
+        var backwards = false
+        repeat(50) {
             val current = nodes()
             current.firstOrNull { matches(it, text) && it.isVisibleToUser }?.let { return it }
-            current.firstOrNull { matches(it, text) }?.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SHOW_ON_SCREEN.id)
-            current.firstOrNull { it.isScrollable && it.actionList.any { a -> a.id == AccessibilityNodeInfo.ACTION_SCROLL_FORWARD } }
-                ?.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)
-            SystemClock.sleep(120)
+            if (!revealRequested && current.firstOrNull { matches(it, text) }
+                    ?.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SHOW_ON_SCREEN.id) == true) {
+                revealRequested = true
+                SystemClock.sleep(150)
+                return@repeat
+            }
+            // 离屏节点可能不在当前无障碍树中；到达边界后反向查找，不一直向下滚。
+            val action = if (backwards) AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD else AccessibilityNodeInfo.ACTION_SCROLL_FORWARD
+            val scrollable = current.firstOrNull { it.isScrollable && it.actionList.any { a -> a.id == action } }
+            if (scrollable?.performAction(action) != true) backwards = !backwards
+            SystemClock.sleep(150)
         }
+        screenshot("setup-visible-control-failure.png").recycle()
         throw AssertionError("Visible control not found: $text")
     }
     private fun click(text: String) {
@@ -263,6 +292,119 @@ class SetupPresentationTest {
             }
         }
         return view
+    }
+
+    @Test fun glassNavigationBlursPixelsAndKeepsTabsClickable() {
+        org.junit.Assume.assumeTrue("Hardware backdrop blur requires API 32+", android.os.Build.VERSION.SDK_INT >= 32)
+        val activity = launch(); cancelSourceTests()
+        val radius = mutableStateOf(1.dp)
+        val selected = mutableStateOf(0)
+        val useBackdrop = mutableStateOf(true)
+        val largeRtl = mutableStateOf(false)
+        val bounds = java.util.concurrent.atomic.AtomicReference<Rect>()
+        val labels = listOf("工作台", "DSH", "文件", "浏览器")
+        val glyphs = listOf(TanukiGlyph.Home, TanukiGlyph.Terminal, TanukiGlyph.Folder, TanukiGlyph.Browser)
+        var sharp: Bitmap? = null; var blurred: Bitmap? = null
+        try {
+            instrumentation.runOnMainSync {
+                activity.setContent {
+                    val density = activity.resources.displayMetrics.density
+                    CompositionLocalProvider(
+                        LocalDensity provides Density(density, if (largeRtl.value) 2f else 1f),
+                        LocalLayoutDirection provides if (largeRtl.value) LayoutDirection.Rtl else LayoutDirection.Ltr,
+                    ) {
+                    TanukiTheme {
+                        val haze = remember { HazeState() }
+                        Box(Modifier.fillMaxSize()) {
+                            // 合成黑白条纹验证真实背景像素被模糊，不以半透明底色代替模糊证据。
+                            Canvas(Modifier.fillMaxSize().haze(haze, HazeDefaults.style(
+                                tint = Color.Transparent, blurRadius = radius.value, noiseFactor = 0f,
+                            ))) {
+                                val stripe = 6.dp.toPx()
+                                for (index in 0..(size.width / stripe).toInt()) {
+                                    drawRect(if (index % 2 == 0) Color.Black else Color.White,
+                                        Offset(index * stripe, 0f), Size(stripe, size.height))
+                                }
+                            }
+                            GlassNavigationBar(selected.value, labels, { selected.value = it },
+                                if (useBackdrop.value) haze else null,
+                                Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(16.dp)
+                                    .onGloballyPositioned { coordinates ->
+                                        val r = coordinates.boundsInWindow()
+                                        bounds.set(Rect(r.left.toInt(), r.top.toInt(), r.right.toInt(), r.bottom.toInt()))
+                                    }) { index, tint -> TanukiIcon(glyphs[index], tint = tint) }
+                        }
+                    }
+                    }
+                }
+            }
+            find("工作台"); SystemClock.sleep(700)
+            sharp = screenshot("glass-source-sharp.png")
+            instrumentation.runOnMainSync { radius.value = 18.dp }
+            SystemClock.sleep(700)
+            blurred = screenshot("glass-source-blurred.png")
+            val bar = requireNotNull(bounds.get())
+            fun stripeEnergy(image: Bitmap): Double {
+                val left = bar.left + (bar.width() * 0.12f).toInt()
+                val right = bar.left + (bar.width() * 0.21f).toInt()
+                val y = bar.top + (6 * context.resources.displayMetrics.density).toInt()
+                return (left until right).map { x ->
+                    kotlin.math.abs(android.graphics.Color.red(image.getPixel(x + 1, y)) -
+                        android.graphics.Color.red(image.getPixel(x, y)))
+                }.average()
+            }
+            val sharpEnergy = stripeEnergy(sharp!!)
+            val blurredEnergy = stripeEnergy(blurred!!)
+            assertTrue("Fixture must contain visible sharp stripes: $sharpEnergy", sharpEnergy > 3)
+            assertTrue("Backdrop blur must reduce stripe edges: $sharpEnergy -> $blurredEnergy", blurredEnergy < sharpEnergy * 0.55)
+            assertTrue("Navigation label must remain painted above the blur",
+                hasMultipleColors(blurred!!, Rect().also(find("工作台")::getBoundsInScreen)))
+            click("浏览器"); assertEquals(3, selected.value)
+            SystemClock.sleep(500)
+            val beforePress = screenshot("glass-navigation-before-press.png")
+            var pressed: Bitmap? = null
+            val target = Rect().also(find("浏览器")::getBoundsInScreen)
+            val pressStart = SystemClock.uptimeMillis()
+            fun injectTouch(action: Int) {
+                val event = android.view.MotionEvent.obtain(pressStart, SystemClock.uptimeMillis(), action,
+                    target.exactCenterX(), target.exactCenterY(), 0).apply {
+                    source = android.view.InputDevice.SOURCE_TOUCHSCREEN
+                }
+                try { check(instrumentation.uiAutomation.injectInputEvent(event, true)) }
+                finally { event.recycle() }
+            }
+            try {
+                injectTouch(android.view.MotionEvent.ACTION_DOWN)
+                SystemClock.sleep(350)
+                pressed = screenshot("glass-navigation-pressed.png")
+                val r = requireNotNull(bounds.get())
+                var changed = 0
+                for (y in r.top until r.bottom) for (x in r.left until r.right) {
+                    if (beforePress.getPixel(x, y) != pressed!!.getPixel(x, y)) changed++
+                }
+                // 已选标签的真实按压不应再叠加 Material 图标胶囊涟漪。
+                assertTrue("Press must not add another icon ripple: $changed pixels",
+                    changed < r.width() * r.height() / 200)
+            } finally {
+                injectTouch(android.view.MotionEvent.ACTION_UP)
+                beforePress.recycle(); pressed?.recycle()
+            }
+            instrumentation.runOnMainSync { selected.value = 4 }
+            SystemClock.sleep(400)
+            assertFalse("Settings has no selected bottom tab", nodes().any { it.isSelected })
+            instrumentation.runOnMainSync { useBackdrop.value = false }
+            click("文件"); assertEquals(2, selected.value)
+            screenshot("glass-navigation-fallback.png").recycle()
+            instrumentation.runOnMainSync { largeRtl.value = true }
+            SystemClock.sleep(700)
+            labels.forEach { label ->
+                val r = Rect().also(find(label)::getBoundsInScreen)
+                assertTrue("Large RTL label stays on screen: $label $r", r.width() > 0 && r.height() > 0 &&
+                    r.left >= 0 && r.right <= context.resources.displayMetrics.widthPixels)
+            }
+            click("DSH"); assertEquals(1, selected.value)
+            screenshot("glass-navigation-rtl-font200.png").recycle()
+        } finally { sharp?.recycle(); blurred?.recycle(); cleanup(activity) }
     }
 
     @Test fun setupGuideFirstStepSourceVersionAndLocalThemeScreenshots() {

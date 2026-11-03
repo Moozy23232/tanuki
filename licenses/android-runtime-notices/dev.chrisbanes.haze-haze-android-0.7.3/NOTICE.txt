@@ -1,0 +1,8 @@
+Haze 0.7.3
+https://github.com/chrisbanes/haze
+
+Copyright 2023, Christopher Banes and the Haze project contributors
+SPDX-License-Identifier: Apache-2.0
+
+Tanuki uses the unmodified published Haze Android library for native Compose
+backdrop blur. The Apache License, Version 2.0 is provided in LICENSE.txt.

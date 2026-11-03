@@ -1,6 +1,7 @@
 package com.tanuki.ui
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.combinedClickable
@@ -12,6 +13,7 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -120,14 +122,16 @@ fun WorkspaceFilesPage(
         entries.filter { (hidden || !it.name.startsWith('.')) && it.name.contains(query, ignoreCase = true) }
             .sortedWith(compareByDescending<WorkspaceFileManager.Entry> { it.directory }.then(ordering).thenBy { it.name })
     }
-    Surface(modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
+    Surface(modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Column(Modifier.fillMaxSize().imePadding()) {
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                Box {
-                    TextButton(onClick = { locations = true }, enabled = !busy) { Text(location.title); Icon(Icons.Default.ArrowDropDown, null) }
-                    DropdownMenu(locations, { locations = false }) {
-                        FileLocation.entries.forEach { area -> DropdownMenuItem(text = { Text(area.title + if (!area.writable) " · 只读" else "") },
-                            onClick = { locations = false; directory = ""; query = ""; location = area }) }
+                Surface(shape = MaterialTheme.shapes.extraLarge, color = MaterialTheme.colorScheme.surfaceContainerLow) {
+                    Box {
+                        TextButton(onClick = { locations = true }, enabled = !busy) { Text(location.title); Icon(Icons.Default.ArrowDropDown, null) }
+                        DropdownMenu(locations, { locations = false }) {
+                            FileLocation.entries.forEach { area -> DropdownMenuItem(text = { Text(area.title + if (!area.writable) " · 只读" else "") },
+                                onClick = { locations = false; directory = ""; query = ""; location = area }) }
+                        }
                     }
                 }
                 IconButton(onClick = { searching = !searching; query = "" }, enabled = !busy && !runtimeRunning) { Icon(Icons.Default.Search, "搜索当前文件夹") }
@@ -154,7 +158,7 @@ fun WorkspaceFilesPage(
                 }
             }
             if (searching) OutlinedTextField(query, { query = it }, Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                singleLine = true, label = { Text("搜索当前文件夹") }, trailingIcon = { IconButton(onClick = { query = ""; searching = false }) { Icon(Icons.Default.Close, "关闭搜索") } })
+                singleLine = true, shape = MaterialTheme.shapes.extraLarge, label = { Text("搜索当前文件夹") }, trailingIcon = { IconButton(onClick = { query = ""; searching = false }) { Icon(Icons.Default.Close, "关闭搜索") } })
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 if (directory.isNotEmpty()) IconButton(onClick = { navigate(directory.substringBeforeLast('/', "")) }, enabled = !busy && !runtimeRunning) { TanukiIcon(TanukiGlyph.Back, "返回上一级") }
                 TextButton(onClick = { navigate("") }, enabled = !busy && !runtimeRunning) { Text(location.guestPath) }
@@ -164,16 +168,26 @@ fun WorkspaceFilesPage(
                     TextButton(onClick = { navigate(parts.take(index + 1).joinToString("/")) }, enabled = !busy) { Text(part, maxLines = 1) }
                 }
             }
-            if (runtimeRunning) Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("DSH 正在使用文件。停止后可安全管理，项目内容会保留。")
-                OutlinedButton(onClick = onStop) { Text("停止 DSH") }
+            if (runtimeRunning) Surface(
+                Modifier.fillMaxWidth().padding(16.dp),
+                shape = MaterialTheme.shapes.large,
+                color = MaterialTheme.colorScheme.secondaryContainer,
+            ) {
+                Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("DSH 正在使用文件。停止后可安全管理，项目内容会保留。")
+                    OutlinedButton(onClick = onStop) { Text("停止 DSH") }
+                }
             } else if (!location.writable) Text("只读位置 · 按 Agent 实际挂载路径显示，不修改运行环境", Modifier.padding(horizontal = 16.dp),
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
             if (action == null) error?.let { Text(it, Modifier.padding(horizontal = 16.dp, vertical = 8.dp), color = MaterialTheme.colorScheme.error) }
             feedback?.let { Text(it, Modifier.padding(horizontal = 16.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary) }
-            if (selected.isNotEmpty()) Surface(color = MaterialTheme.colorScheme.secondaryContainer) {
-                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
+            if (selected.isNotEmpty()) Surface(
+                color = MaterialTheme.colorScheme.primaryContainer,
+                shape = MaterialTheme.shapes.extraLarge,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
+            ) {
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).heightIn(min = 52.dp), verticalAlignment = Alignment.CenterVertically) {
                     IconButton(onClick = { selected = emptySet() }) { Icon(Icons.Default.Close, "取消选择") }
                     Text("已选 ${selected.size}", style = MaterialTheme.typography.labelLarge)
                     TextButton(onClick = { selected = shown.map { it.path }.toSet() }) { Text("全选") }
@@ -182,7 +196,12 @@ fun WorkspaceFilesPage(
             }
             val row: @Composable (WorkspaceFileManager.Entry, Boolean) -> Unit = { entry, tile ->
                 var expanded by remember(entry.path) { mutableStateOf(false) }
-                Surface(color = if (entry.path in selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface) {
+                val rowColor by animateColorAsState(
+                    targetValue = if (entry.path in selected) MaterialTheme.colorScheme.primaryContainer
+                        else if (tile) MaterialTheme.colorScheme.surfaceContainerLow else MaterialTheme.colorScheme.background,
+                    label = "fileSelection",
+                )
+                Surface(color = rowColor, shape = RoundedCornerShape(if (tile) 24.dp else 18.dp)) {
                     Column(Modifier.fillMaxWidth().combinedClickable(enabled = !busy,
                         onClick = { if (selected.isNotEmpty()) toggle(entry.path) else if (entry.directory) navigate(entry.path)
                             else runTask { preview = files.preview(entry.path); previewEntry = entry } },
@@ -209,13 +228,27 @@ fun WorkspaceFilesPage(
                 }
             }
             Box(Modifier.weight(1f).fillMaxWidth()) {
-                if (shown.isEmpty() && !busy && error == null && !runtimeRunning) Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(if (query.isNotEmpty()) "没有匹配的文件" else if (entries.isNotEmpty()) "此处仅有隐藏文件" else "文件夹为空", style = MaterialTheme.typography.titleMedium)
+                if (shown.isEmpty() && !busy && error == null && !runtimeRunning) Column(
+                    Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(32.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically),
+                ) {
+                    TanukiIcon(TanukiGlyph.Folder, modifier = Modifier.size(40.dp), tint = MaterialTheme.colorScheme.primary)
+                    Text(if (query.isNotEmpty()) "没有匹配的文件" else if (entries.isNotEmpty()) "此处仅有隐藏文件" else "文件夹为空", style = MaterialTheme.typography.headlineSmall)
                     Text(if (query.isNotEmpty()) "试试更短的文件名，或清除搜索。" else if (entries.isNotEmpty()) "在“排序与显示”中显示隐藏文件。" else if (location.writable) "从右上角菜单新建文件夹、文本文件或导入项目。" else "此位置暂无内容。", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                } else if (grid) LazyVerticalGrid(GridCells.Adaptive(160.dp), Modifier.fillMaxSize(), contentPadding = PaddingValues(8.dp)) {
+                } else if (grid) LazyVerticalGrid(
+                    GridCells.Adaptive(160.dp),
+                    Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
                     gridItems(shown, key = { it.path }) { entry -> row(entry, true) }
-                } else LazyColumn(Modifier.fillMaxSize()) {
-                    items(shown, key = { it.path }) { entry -> row(entry, false); HorizontalDivider(Modifier.padding(start = 52.dp), color = MaterialTheme.colorScheme.outlineVariant) }
+                } else LazyColumn(
+                    Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    items(shown, key = { it.path }) { entry -> row(entry, false) }
                 }
             }
         }

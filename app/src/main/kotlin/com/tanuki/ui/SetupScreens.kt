@@ -1,12 +1,16 @@
 package com.tanuki.ui
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import com.tanuki.runtime.*
@@ -87,48 +91,57 @@ private fun RecoveryGuidance(s:Snapshot,c:TanukiUiCallbacks) {
 private fun ReadyWorkspace(model:TanukiUiModel,c:TanukiUiCallbacks,openDsh:()->Unit,onShowSteps:()->Unit) {
     val s=model.snapshot
     var showPermissions by rememberSaveable { mutableStateOf(false) }
-    Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
-        Text("你的移动开发空间",style=MaterialTheme.typography.headlineSmall)
+    Column(verticalArrangement=Arrangement.spacedBy(12.dp)) {
+        Text("你的移动开发空间",style=MaterialTheme.typography.headlineLarge)
         SetupCaption("管理本机项目，在 DeepSeek Harness 中开始工作。")
     }
     RecoveryGuidance(s,c)
     if(model.support.state==com.tanuki.web.WebViewSupportState.UPDATE_REQUIRED)WebViewCard(model.support,s.setupIdle,c)
-    Surface(shape=MaterialTheme.shapes.large,color=MaterialTheme.colorScheme.surface,modifier=Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(24.dp),verticalArrangement=Arrangement.spacedBy(20.dp)) {
+    Box(
+        Modifier.fillMaxWidth().clip(MaterialTheme.shapes.extraLarge).background(tanukiHeroBrush()),
+    ) {
+        Column(Modifier.padding(28.dp),verticalArrangement=Arrangement.spacedBy(24.dp)) {
             Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.SpaceBetween) {
-                Surface(shape=MaterialTheme.shapes.medium,color=MaterialTheme.colorScheme.primaryContainer) {
-                    Box(Modifier.size(48.dp),contentAlignment=Alignment.Center) {
-                        TanukiIcon(TanukiGlyph.Terminal,tint=MaterialTheme.colorScheme.onPrimaryContainer)
+                Surface(shape=MaterialTheme.shapes.large,color=MaterialTheme.colorScheme.surface.copy(alpha=0.72f)) {
+                    Box(Modifier.size(52.dp),contentAlignment=Alignment.Center) {
+                        TanukiIcon(TanukiGlyph.Terminal,tint=MaterialTheme.colorScheme.primary)
                     }
                 }
                 StatusPill(s.service.label,s.service==ServiceState.RUNNING)
             }
-            Column(verticalArrangement=Arrangement.spacedBy(4.dp)) {
-                Text("DeepSeek Harness",style=MaterialTheme.typography.titleLarge)
+            Column(verticalArrangement=Arrangement.spacedBy(6.dp)) {
+                Text("DeepSeek Harness",style=MaterialTheme.typography.headlineMedium)
                 Text("DSH ${s.dsh}",style=MaterialTheme.typography.bodyMedium,
                     fontFamily=FontFamily.Monospace,color=MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Button(onClick={if(s.service!=ServiceState.RUNNING)c.command("START");openDsh()},
                 enabled=!s.setupBusy && s.update!=UpdateState.RECOVERY_REQUIRED &&
                     model.support.state!=com.tanuki.web.WebViewSupportState.UPDATE_REQUIRED,
-                shape=MaterialTheme.shapes.medium,modifier=Modifier.fillMaxWidth().heightIn(min=52.dp)) {
+                shape=MaterialTheme.shapes.large,modifier=Modifier.fillMaxWidth().heightIn(min=56.dp)) {
                 Text(if(s.service==ServiceState.RUNNING)"打开 DSH" else if(s.service==ServiceState.STARTING)"正在启动…" else "启动 DSH")
             }
         }
     }
-    Surface(onClick=onShowSteps,shape=MaterialTheme.shapes.large,color=MaterialTheme.colorScheme.surface,modifier=Modifier.fillMaxWidth()) {
-        Row(Modifier.padding(16.dp).heightIn(min=48.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(16.dp)) {
-            TanukiIcon(TanukiGlyph.Layers,tint=MaterialTheme.colorScheme.onSurfaceVariant)
+    Surface(
+        onClick=onShowSteps,
+        shape=MaterialTheme.shapes.extraLarge,
+        color=MaterialTheme.colorScheme.surfaceContainerLow,
+        modifier=Modifier.fillMaxWidth(),
+    ) {
+        Row(Modifier.padding(22.dp).heightIn(min=52.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(16.dp)) {
+            TanukiIcon(TanukiGlyph.Layers,tint=MaterialTheme.colorScheme.primary)
             Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(4.dp)) {
-                Text("运行环境已就绪",style=MaterialTheme.typography.titleSmall)
+                Text("运行环境已就绪",style=MaterialTheme.typography.titleMedium)
                 SetupCaption("Ubuntu ${model.components.ubuntuVersion} · Node.js ${model.components.nodeVersion}")
                 Text("查看安装步骤与版本",style=MaterialTheme.typography.labelMedium,color=MaterialTheme.colorScheme.primary)
             }
             TanukiIcon(TanukiGlyph.Chevron,tint=MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
-    TextButton(onClick={showPermissions=!showPermissions},modifier=Modifier.heightIn(min=48.dp)) { Text("文件与命令权限说明") }
-    if(showPermissions)SandboxGuidance(s)
+    Column(Modifier.animateContentSize()) {
+        TextButton(onClick={showPermissions=!showPermissions},modifier=Modifier.heightIn(min=48.dp)) { Text("文件与命令权限说明") }
+        AnimatedVisibility(visible=showPermissions) { SandboxGuidance(s) }
+    }
     OperationCard(s,c)
 }
 
@@ -149,7 +162,7 @@ private fun FoundationTools(model:TanukiUiModel,c:TanukiUiCallbacks) {
     SetupPanel {
         Column(verticalArrangement=Arrangement.spacedBy(4.dp)) {
             groups.forEachIndexed { index, (name,ids) ->
-                Row(Modifier.fillMaxWidth().heightIn(min=40.dp),verticalAlignment=Alignment.CenterVertically,
+                Row(Modifier.fillMaxWidth().heightIn(min=44.dp),verticalAlignment=Alignment.CenterVertically,
                     horizontalArrangement=Arrangement.spacedBy(12.dp)) {
                     Text(name,Modifier.weight(1f),style=MaterialTheme.typography.bodyMedium)
                     Text(if(!current)"待检查" else if(model.tools.missing.any { it in ids })"需要补齐" else "已通过",
@@ -191,8 +204,12 @@ internal fun SandboxGuidance(s:Snapshot) {
 
 @Composable
 private fun SetupPanel(content:@Composable ColumnScope.()->Unit) {
-    Surface(shape=MaterialTheme.shapes.large,color=MaterialTheme.colorScheme.surface,modifier=Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(12.dp),content=content)
+    Surface(
+        shape=MaterialTheme.shapes.extraLarge,
+        color=MaterialTheme.colorScheme.surfaceContainerLow,
+        modifier=Modifier.fillMaxWidth(),
+    ) {
+        Column(Modifier.padding(22.dp),verticalArrangement=Arrangement.spacedBy(14.dp),content=content)
     }
 }
 @Composable
