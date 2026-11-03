@@ -38,7 +38,7 @@
 
 - 删除 `docs/handoffs/20261103-1154-handoff-retention.md`：清理过程已经完成，长期规则保留于 `AGENTS.md` / `docs/PUBLICATION.md`，历史宿主验证留在 `docs/TEST-REPORT.md`，Git 基线 `c0680b4` 已保留于当前状态。
 - 删除 `docs/handoffs/20261103-1158-release-publishing.md`：旧版发布咨询、未决版本/tag 和未签名路径核对已被本版打包替代；签名/包名/不代发/GPL 附件边界均归入 `docs/RELEASE.md`，历史 unsigned 验证留在测试报告。
-- 保留旧构建记录 `20261102-2226-tanuki-builds.md` 和 DSH 修复记录 `20261103-1051-dsh-resolution-cache.md`：仍有独有设备/组件验证和未测性能边界；不按日期删除。
+- 当时保留的旧构建记录在后续0.1.2整理时已将必要构建/迁移证据归入[测试现状](../TEST-REPORT.md)并清理；DSH修复记录 `20261103-1051-dsh-resolution-cache.md` 仍保留组件锁与未测性能边界，不按日期删除。
 
 ## 验证记录
 

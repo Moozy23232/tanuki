@@ -1,6 +1,6 @@
 # 签名、打包与 GitHub Release
 
-**用户说要发布时，先询问版本号；已经明确的版本不重复问。** 确认递增的 `versionCode` 和渠道后再打包，不用默认开发版本冒充用户版本。本次用户最终更正为 **v0.1.1**：`versionName=0.1.1`、`versionCode=3`（保留内部代码，不将已测构建降级），并授权源码 commit/push；**Release 由用户发布，Agent 不创建 tag 或上传**。
+**用户说要发布时，先询问版本号；已经明确的版本不重复问。** 本次用户已确认 **v0.1.2**，使用 `versionName=0.1.2`、`versionCode=4` 与原有 workspacecheck 开发证书。源码已同步用户合并 PR #1 后的 main `ece5c82`；版本代码高于已公开/本地/测试设备的最高3。**用户已追加授权先提交推送本地源码，再准备发布附件；未授权创建 tag 或上传 Release**。
 
 源码已推送不等于 Release 已发布；本地打包、Git 提交/推送、创建 tag、上传附件和更改可见性分别遵守当前授权。
 
@@ -8,29 +8,29 @@
 
 ```bash
 source scripts/env.sh
-python3 scripts/prepare-app-release.py --version 0.1.1 --version-code 3 --channel workspacecheck
+python3 scripts/prepare-app-release.py --version 0.1.2 --version-code 4 --channel workspacecheck
 ```
 
-脚本先校验参数与当前交接，再串行构建指定版本并核对真实 APK 包名/版本/SDK/证书；输出 **`artifacts/releases/0.1.1/`**（只从此目录取发布附件；分类与历史归档见[取包说明](ARTIFACTS.md)）：
+脚本先校验参数与当前交接，再串行构建指定版本并核对真实 APK 包名/版本/SDK/证书；输出 **`artifacts/releases/0.1.2/`**（只从此目录取发布附件；分类与历史归档见[取包说明](ARTIFACTS.md)）：
 
-- `Tanuki-0.1.1-workspacecheck-arm64-release.apk`
+- `Tanuki-0.1.2-workspacecheck-arm64-release.apk`
 - `app-update.json`：应用内更新所需清单；不是手写的可信证书来源。
-- `Tanuki-0.1.1-source.zip`：完整公开源码，另含必要原生对应源码附件。
+- `Tanuki-0.1.2-source.zip`：完整公开源码，另含必要原生对应源码附件。
 - `Tanuki-native-corresponding-sources.tar.gz`、`native-source-SHA256SUMS`
 - `RELEASE-SHA256SUMS`：以上附件的实际 SHA-256。
 
 该渠道是 **开发证书签名、non-debuggable 的 release 构建**，并非正式签名。目标为 `com.tanuki.modern.workspacecheck`、ARM64、minSdk26/targetSdk34；保持原开发证书才能覆盖之前同包测试版。生成过程不读取或上传用户数据，不访问设备，不创建 tag/Release。
 
 ```bash
-(cd artifacts/releases/0.1.1 && shasum -a 256 -c RELEASE-SHA256SUMS)
+(cd artifacts/releases/0.1.2 && shasum -a 256 -c RELEASE-SHA256SUMS)
 ```
 
-文档/源码变化后也须重打源码 ZIP，并更新发布目录内副本及外部散列，不能沿用打包前的旧 ZIP。`python3 scripts/package-source.py --version 0.1.1` 仅生成源码包，不重新签发 APK；复制后重新核对发布清单。重新打 APK 则应重新执行准备脚本。
+文档/源码变化后也须重打源码 ZIP，并更新发布目录内副本及外部散列，不能沿用打包前的旧 ZIP。`python3 scripts/package-source.py --version 0.1.2` 仅生成源码包，不重新签发 APK；复制后重新核对发布清单。重新打 APK 则应重新执行准备脚本。
 
 ## 用户网页发布
 
 1. 按 [上传检查](PUBLICATION.md) 归档必要结论、清理已过期交接、修复引用、检查实际暂存与公开归档，再将对应源码提交推送到目标仓库。tag 应指向与 APK 对应的提交。
-2. GitHub 仓库 → **Releases → Draft a new release**，选择该提交，创建未使用的 **`v0.1.1`** tag，标题可为 **Tanuki v0.1.1**。不要只改 tag 而保留 APK 内旧版本。
+2. GitHub 仓库 → **Releases → Draft a new release**，选择该提交，创建未使用的 **`v0.1.2`** tag，标题可为 **Tanuki v0.1.2**。不要只改 tag 而保留 APK 内旧版本。
 3. 将上述发布目录的 **全部 6 个附件** 上传到同一个 Release，尤其不能漏掉 `app-update.json`。GitHub 自动生成的 Source code 压缩包不能替代带原生对应源码的完整附件。
 4. 本版为 workspacecheck 开发签名测试包，勾选 **Set as a pre-release**；核对版本说明、仓库可见性和附件，再由用户点击 **Publish release**。
 
@@ -64,7 +64,7 @@ python3 scripts/prepare-app-release.py --version 用户已确认的版本 --vers
 ```bash
 source scripts/env.sh
 ./gradlew -PtestBuildType=debug -PdevelopmentReleaseSigning=true \
-  -PtanukiVersionName=0.1.1 -PtanukiVersionCode=3 \
+  -PtanukiVersionName=0.1.2 -PtanukiVersionCode=4 \
   -I scripts/workspace-verification.init.gradle \
   :app:assembleModernDebug :app:assembleModernRelease
 ```

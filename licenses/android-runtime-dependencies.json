@@ -142,9 +142,9 @@
   {
     "group": "androidx.compose.animation",
     "name": "animation-android",
-    "version": "1.6.0",
+    "version": "1.6.7",
     "filename": "animation-release.aar",
-    "sha256": "1743e5abb01704f7051d2cdc62bead14898296f3ce9de38a51af507fa54d422d",
+    "sha256": "5679bd5b963f9a29069f631db786845c7945bc79b3342b47e7f13e9713fcde67",
     "licenses": [
       {
         "name": "The Apache Software License, Version 2.0",
@@ -156,9 +156,9 @@
   {
     "group": "androidx.compose.animation",
     "name": "animation-core-android",
-    "version": "1.6.0",
+    "version": "1.6.7",
     "filename": "animation-core-release.aar",
-    "sha256": "035ca2dd48b4c81babe41ee7a3703f4796c543d06725fb4fe291317b426cb2ed",
+    "sha256": "080b75340aafc4362f2afb9a93705cf664b2537264be72ebf63fbfa822916383",
     "licenses": [
       {
         "name": "The Apache Software License, Version 2.0",
@@ -170,9 +170,9 @@
   {
     "group": "androidx.compose.foundation",
     "name": "foundation-android",
-    "version": "1.6.0",
+    "version": "1.6.7",
     "filename": "foundation-release.aar",
-    "sha256": "45ae6304968e21db82f36519768e15752d3ba721602068972811aff7c73a295a",
+    "sha256": "3b6cd27611e2fbd0976ec3896579d45e570b26966cc9898ed0ed03865087bf3c",
     "licenses": [
       {
         "name": "The Apache Software License, Version 2.0",
@@ -184,9 +184,9 @@
   {
     "group": "androidx.compose.foundation",
     "name": "foundation-layout-android",
-    "version": "1.6.0",
+    "version": "1.6.7",
     "filename": "foundation-layout-release.aar",
-    "sha256": "6ecba7a05af98e6090edbdb8d9d5af51e6f1899b3bc11b9d1050182db8edbeaa",
+    "sha256": "faf2064b0602d78e6697631f5b0428abea25178adc378484a07605d8ca4d36ac",
     "licenses": [
       {
         "name": "The Apache Software License, Version 2.0",
@@ -366,9 +366,9 @@
   {
     "group": "androidx.core",
     "name": "core",
-    "version": "1.13.0",
-    "filename": "core-1.13.0.aar",
-    "sha256": "1b96c8eb10c4b40283fdd6e9aa74ffff05fae4f15d54f61ba69d517fcd144695",
+    "version": "1.13.1",
+    "filename": "core-1.13.1.aar",
+    "sha256": "2c27de199535675005553066597a4b20fa1eea7c228ab4ef6b32b5fe39ca1f59",
     "licenses": [
       {
         "name": "The Apache Software License, Version 2.0",
@@ -380,9 +380,9 @@
   {
     "group": "androidx.core",
     "name": "core",
-    "version": "1.13.0",
-    "filename": "core-1.13.0.aar",
-    "sha256": "1b96c8eb10c4b40283fdd6e9aa74ffff05fae4f15d54f61ba69d517fcd144695",
+    "version": "1.13.1",
+    "filename": "core-1.13.1.aar",
+    "sha256": "2c27de199535675005553066597a4b20fa1eea7c228ab4ef6b32b5fe39ca1f59",
     "licenses": [
       {
         "name": "The Apache Software License, Version 2.0",
@@ -394,9 +394,9 @@
   {
     "group": "androidx.core",
     "name": "core-ktx",
-    "version": "1.13.0",
-    "filename": "core-ktx-1.13.0.aar",
-    "sha256": "59c54e6129e9261c6d810f8eea4a6ee2f4994d8162b1cd9fc88c9c84c92accfc",
+    "version": "1.13.1",
+    "filename": "core-ktx-1.13.1.aar",
+    "sha256": "19ba50d094c7368ede1b4ccf1195ceb83e35970736593f823e5af716f8d05d70",
     "licenses": [
       {
         "name": "The Apache Software License, Version 2.0",
@@ -703,6 +703,20 @@
       "META-INF_LICENSE.txt",
       "META-INF_NOTICE.txt"
     ]
+  },
+  {
+    "group": "dev.chrisbanes.haze",
+    "name": "haze-android",
+    "version": "0.7.3",
+    "filename": "haze-release.aar",
+    "sha256": "fc5a6931b7dd90aa69fc4e0bd714f3a8c7bca63b51679f75113d12d79e756b59",
+    "licenses": [
+      {
+        "name": "The Apache Software License, Version 2.0",
+        "url": "http://www.apache.org/licenses/LICENSE-2.0.txt"
+      }
+    ],
+    "noticeFiles": []
   },
   {
     "group": "org.apache.commons",

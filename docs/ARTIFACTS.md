@@ -1,11 +1,11 @@
 # Tanuki 构建产物：从哪里取包
 
-**当前准备发布的是 v0.1.1（versionCode 3）。**
+**当前准备发布的是 v0.1.2（versionCode 4）。**
 
-- 安装 APK：`artifacts/releases/0.1.1/Tanuki-0.1.1-workspacecheck-arm64-release.apk`
-- GitHub 发布：只上传 `artifacts/releases/0.1.1/` 内全部 **6 个附件**，包含 `app-update.json`、完整源码、原生对应源码及散列。
+- 安装 APK：`artifacts/releases/0.1.2/Tanuki-0.1.2-workspacecheck-arm64-release.apk`
+- GitHub 发布：只上传 `artifacts/releases/0.1.2/` 内全部 **6 个附件**，包含 `app-update.json`、完整源码、原生对应源码及散列。
 - 当前是开发证书的 workspacecheck 包，请标记 **Pre-release**；不是正式签名，也没有由 Agent 自动发布。
-- 根目录不再放 APK/ZIP。`archive/` 中的旧 0.1.0 和已撤回、未发布的 0.1.2 **不要拿来安装或发布**；不能按最大的版本号猜测当前版本。
+- 根目录不再放 APK/ZIP。`archive/` 中的旧 0.1.0 和已撤回、未发布的旧候选 0.1.2/code3 **不要拿来安装或发布**；本次新包是 `releases/0.1.2/` 内的 code4，不能只按版本名称猜测当前附件。已发布0.1.1目录保留原样。
 
 ## 目录约定
 
@@ -16,9 +16,10 @@ artifacts/
 ├── README.md                  # 本说明的生成副本
 ├── SOURCE-SHA256SUMS           # 最近一次源码打包的校验入口
 ├── releases/
-│   └── 0.1.1/                 # 完整、可直接上传的发布附件（6 个文件）
+│   ├── 0.1.1/                 # 已发布历史附件，保持原样
+│   └── 0.1.2/                 # 本次完整发布附件（6 个文件，code4）
 ├── sources/
-│   ├── Tanuki-0.1.1-source.zip # 当前工作树源码的打包副本
+│   ├── Tanuki-0.1.2-source.zip # 当前工作树源码的打包副本
 │   └── native/                # 原生对应源码和同目录校验清单
 ├── builds/
 │   └── production/<版本>/     # 正式签名脚本的中间 APK/签名报告，非完整发布包
@@ -38,7 +39,7 @@ artifacts/
 ```bash
 (cd artifacts && shasum -a 256 -c SOURCE-SHA256SUMS)
 (cd artifacts/sources/native && shasum -a 256 -c native-source-SHA256SUMS)
-(cd artifacts/releases/0.1.1 && shasum -a 256 -c RELEASE-SHA256SUMS && shasum -a 256 -c native-source-SHA256SUMS)
+(cd artifacts/releases/0.1.2 && shasum -a 256 -c RELEASE-SHA256SUMS && shasum -a 256 -c native-source-SHA256SUMS)
 (cd artifacts/archive && shasum -a 256 -c ARCHIVE-SHA256SUMS)
 ```
 

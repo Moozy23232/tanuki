@@ -2,12 +2,30 @@
 
 Tanuki验证目标：`com.tanuki.modern.workspacecheck`，命名空间 `com.tanuki`，ARM64、minSdk26/targetSdk34。debug/release构建与证书、宿主与设备执行必须分别记录，源码中有测试不等于已运行。
 
+## v0.1.2/4 发布准备（2026-11-03，打包进行中）
+
+- 用户确认0.1.2并要求先推送本地源码、再打包。主目录已从67216c9快进至用户合并PR后的ece5c82，合并代码树与已测PR 5e08178一致；仅将版本默认值/源码包名更新至0.1.2/4，补齐实际58项依赖及上游许可、同步交接/发布文档，无业务行为修复。
+- 公开v0.1.1/v0.1.0附件的GitHub SHA-256与本地旧APK一致，apkanalyzer实际code为3/1，设备与撤回候选均为3；新版code4单调递增，沿用原workspacecheck开发证书。
+- 本轮主目录新跑：发布12项、工作流12项、公开边界19项宿主回归通过；97项JVM无失败/错误/跳过，debug lint 0错误/53警告/1提示，Gradle 1分57秒成功。112个本地Markdown链接与diff格式检查通过。
+- release构建、实际APK身份/校验及设备覆盖验证尚待推送完成后执行；前轮61/62设备结论不能当本次新包结果。完整进度见[本次交接](handoffs/20261103-1906-sync-package-012.md)。
+
+## PR #1 界面改版隔离验证（2026-11-03，验证时尚未合并）
+
+- 固定 [PR #1](https://github.com/leezzou/tanuki/pull/1) head `5e081784707352f35564890ad139b50580190661`，共同祖先为用户最新 main `67216c9561294e196d5e678c381b09888bc61e30`，ahead2/behind0；收尾远端引用仍一致。两个独立 worktree 的产品代码均保持各自提交原样，主工作区只记验证文档，不自动合并。
+- PR 的 `verify-workspace.sh` 构建阶段通过（3分37秒）：Modern debug app/test、97项 JVM（0失败/错误/跳过）、lint 0错误/53 warnings/1 information。另顺序编译 Compat debug 通过（1分9秒），未安装不同包名或在旧 Android 上运行。
+- 复用 `Pixel_7_API_34_arm64` / `emulator-5572`，ARM64 API34、WebView159.0.8133.0、专用合成数据，无安装/真实任务。实际 APK 包名、test target、开发证书一致后同包覆盖；覆盖前、PR安装后及main/PR相互覆盖后的合成文件读回均通过。最终保留 PR debug v0.1.1/3，不是前轮发布 APK 或正式签名包。
+- PR 首轮受影响 UI 组22项：21通过/1失败（177.584秒）；文件/浏览器安全扩展组40项：39通过/1失败（160.375秒）。覆盖玻璃背景像素模糊/点击/RTL/200%字体、安装步骤与进度、文件编辑复制多选、设置与更新入口、浏览器多页/收藏/历史/搜索/下载、触摸暂停/30秒归还/显式撤销、整页尾部截图/AI缩放/小窗、WebView保留、合成外链/认证与Blob等；未运行依赖已装运行环境的两个用例，不把未选择算通过。
+- 失败对照：`BrowserWorkspacePresentationTest#newBrowserPageDefaultsToWindowsAndFullscreenKeepsTheDocument` 在第227行退出全屏后的 `systemBars()` 可见性等待失败，PR 单独复跑仍失败（23.799秒），main 同点失败；根因未修复，不宣称该功能已通过。`BrowserOverlayPresentationTest#displayDensityKeepsCollapsedControlsReachableAndNotificationStopIsFinal` 第303行通知动作缺失，main也同点失败（两项对照共30.540秒）。设备通知权限原为关闭，正常点击原生入口和系统「允许」后，此通知用例 main 1项通过（11.635秒）、PR与合成文件复测2项通过（11.619秒）。通知授权保留，density恢复420。
+- 因此本次62个不同设备用例累计61通过、1项既有全屏断言失败；复跑不重复计数，首轮失败不抹掉，无host timeout/仪器中断/跳过。未发现本 PR 新增功能回归；真机、真实账号/模型、完整 Ubuntu/Node/DSH、旧 Android 渲染与正式签名未验收，API Key保存仍暂停。
+- 流程缺口：PR原样 `check-handoff.py` 会报 Stale handoff；本地测试副本按规则新增本会话交接并刷新后才执行构建，未关闭检查。合并后须同步测试记录、刷新内容指纹；本次没有提交/推送这些文档。完整执行边界见[本次交接](handoffs/20261103-1809-pr-test-plan.md)。
+- 后续用户已在 GitHub squash 合并为 `ece5c82`，0.1.2打包轮快进到该提交；其代码树与上述固定PR一致。同步与新包结果另见[当前交接](handoffs/20261103-1906-sync-package-012.md)，不将本节结果冒充新release重跑。
+
 ## 产物分类验证（2026-11-03，非产品重测）
 
 - `scripts/test-app-release.py` 12项、`test-agent-workflow.py` 12项、`test-publication.py` 19项均通过；源码分类、原生附件白名单、发布收集、模拟正式签名分类输出和清单相对路径有回归覆盖。两个签名/原生打包 shell 语法检查通过。
 - 迁移前记录22个产物文件的SHA-256，分类后逐一确认所有原始内容仍存在，未删除旧APK/源码；当前发布只保留0.1.1，旧0.1.2移入撤回归档。归档清单含16个文件。
 - 新增路径回归初始1失败/3错误；实现后通过。首次工作流回归有1项合成fixture缺少新说明文件，补fixture及实际分类输出断言后12项通过，未放宽签名路径保护。
-- 本次只改宿主脚本/文档和移动产物，未重编APK、未运行Gradle/JVM/lint/模拟器、未操作正式密钥或重新执行原生源码打包；下述97项JVM与20项设备是前轮结果，不计为本轮新跑。最终交接/归档校验见[本轮记录](handoffs/20261103-1607-artifact-layout.md)。
+- 本次只改宿主脚本/文档和移动产物，未重编APK、未运行Gradle/JVM/lint/模拟器、未操作正式密钥或重新执行原生源码打包；下述97项JVM与20项设备是前轮结果，不计为本轮新跑。原交接在0.1.2提交前清理，本节保留实际验证与失败，分类和归档校验入口见[取包说明](ARTIFACTS.md)。
 
 ## v0.1.1 产品验证：登录、空闲权限与应用更新（2026-11-03）
 
@@ -106,7 +124,7 @@ source scripts/env.sh
 - debug APK SHA256：`bb9184a657b94f3718353a68c3c68a189639ca2637be3ddc082045584829c7e8`
 - release APK SHA256：`df929e811749c10dd0274c4f2485a710d6eccf61a8a20b6a2cc63d18c453ad9c`
 
-Git与源码边界扫描通过，249个Git候选、0索引、0发现；公开归档/迁移核验见[当前交接](handoffs/20261102-2226-tanuki-builds.md)。原生依赖官网首次下载HTTP504，使用官方FTP镜像且SHA256完全匹配后重试成功；未放宽TLS/哈希。
+Git与源码边界扫描通过，249个Git候选、0索引、0发现；公开归档/迁移范围保留于本节表格，原已完成交接在0.1.2提交前清理。原生依赖官网首次下载HTTP504，使用官方FTP镜像且SHA256完全匹配后重试成功；未放宽TLS/哈希。
 
 发布扫描不覆盖所有自定义秘密、姓名、图片像素或Git历史，第三方必要许可署名保留。原始日志不上传，不以本机缓存作为交接依据。
 

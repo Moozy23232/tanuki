@@ -52,7 +52,7 @@ git config --local user.email "<GitHub提供的隐私邮箱>"
 ```bash
 python3 scripts/check-publication.py
 python3 scripts/package-source.py
-python3 scripts/check-publication.py --archive artifacts/sources/Tanuki-0.1.1-source.zip
+python3 scripts/check-publication.py --archive artifacts/sources/Tanuki-0.1.2-source.zip
 (cd artifacts && shasum -a 256 -c SOURCE-SHA256SUMS)
 ```
 
