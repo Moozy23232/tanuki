@@ -15,47 +15,49 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 
-/** 鸢尾蓝建立识别度，雾紫与暖杏只用于轻量渐变和空间分层。 */
-private val Accent = Color(0xFF4D55B6)
-private val AccentLight = Color(0xFFC4C6FF)
+/** 石墨黑、温润灰白与烟灰建立中性层级，主操作不依赖彩色强调。 */
+private val Accent = Color(0xFF2B2C28)
+private val AccentLight = Color(0xFFE2E3DC)
 
 private val LightScheme = lightColorScheme(
-    primary = Accent, onPrimary = Color.White,
-    primaryContainer = Color(0xFFE4E5FF), onPrimaryContainer = Color(0xFF242765),
-    secondary = Color(0xFF5D5F72), onSecondary = Color.White,
-    secondaryContainer = Color(0xFFE8E7F2), onSecondaryContainer = Color(0xFF303044),
-    tertiary = Color(0xFF76536B), onTertiary = Color.White,
-    tertiaryContainer = Color(0xFFF8E3EF), onTertiaryContainer = Color(0xFF47253B),
-    background = Color(0xFFF8F8FC), onBackground = Color(0xFF1B1B24),
-    surface = Color(0xFFFDFCFF), onSurface = Color(0xFF1B1B24),
-    surfaceVariant = Color(0xFFE9E8F0), onSurfaceVariant = Color(0xFF5A5967),
-    surfaceContainerLowest = Color.White, surfaceContainerLow = Color(0xFFF1F0F7),
-    surfaceContainer = Color(0xFFECEBF3), surfaceContainerHigh = Color(0xFFE6E5EE),
-    surfaceContainerHighest = Color(0xFFE0DFE9),
-    outline = Color(0xFF777683), outlineVariant = Color(0xFFCFCDDA),
+    primary = Accent, onPrimary = Color(0xFFFDFDFB),
+    primaryContainer = Color(0xFFE3E3DD), onPrimaryContainer = Color(0xFF232420),
+    secondary = Color(0xFF60615B), onSecondary = Color(0xFFFCFCFA),
+    secondaryContainer = Color(0xFFECECE6), onSecondaryContainer = Color(0xFF30312C),
+    tertiary = Color(0xFF6A6B65), onTertiary = Color(0xFFFCFCFA),
+    tertiaryContainer = Color(0xFFF0EFEA), onTertiaryContainer = Color(0xFF353631),
+    background = Color(0xFFF6F6F2), onBackground = Color(0xFF1F201D),
+    surface = Color(0xFFFCFCF9), onSurface = Color(0xFF1F201D),
+    surfaceVariant = Color(0xFFE8E7E2), onSurfaceVariant = Color(0xFF5A5C56),
+    surfaceDim = Color(0xFFD7D8D0), surfaceBright = Color(0xFFFCFCF9),
+    surfaceContainerLowest = Color.White, surfaceContainerLow = Color(0xFFF1F1EC),
+    surfaceContainer = Color(0xFFEBEBE5), surfaceContainerHigh = Color(0xFFE5E5DF),
+    surfaceContainerHighest = Color(0xFFDFDFD8),
+    outline = Color(0xFF75776F), outlineVariant = Color(0xFFCDCDC5),
     error = Color(0xFFB3261E), onError = Color.White,
     errorContainer = Color(0xFFF9DEDC), onErrorContainer = Color(0xFF410E0B),
-    inverseSurface = Color(0xFF30303B), inverseOnSurface = Color(0xFFF2F0F8),
+    inverseSurface = Color(0xFF30312C), inverseOnSurface = Color(0xFFF1F1EC),
     inversePrimary = AccentLight, surfaceTint = Accent,
 )
 
 private val DarkScheme = darkColorScheme(
-    primary = AccentLight, onPrimary = Color(0xFF292D76),
-    primaryContainer = Color(0xFF3C427E), onPrimaryContainer = Color(0xFFE4E5FF),
-    secondary = Color(0xFFC7C5D8), onSecondary = Color(0xFF303043),
-    secondaryContainer = Color(0xFF444455), onSecondaryContainer = Color(0xFFE5E2EF),
-    tertiary = Color(0xFFE5B9D2), onTertiary = Color(0xFF43273A),
-    tertiaryContainer = Color(0xFF5D3C50), onTertiaryContainer = Color(0xFFF8E3EF),
-    background = Color(0xFF121218), onBackground = Color(0xFFE6E3ED),
-    surface = Color(0xFF1A1A22), onSurface = Color(0xFFE6E3ED),
-    surfaceVariant = Color(0xFF2D2C38), onSurfaceVariant = Color(0xFFC5C2D0),
-    surfaceContainerLowest = Color(0xFF0D0D12), surfaceContainerLow = Color(0xFF1D1D26),
-    surfaceContainer = Color(0xFF22222C), surfaceContainerHigh = Color(0xFF2C2B37),
-    surfaceContainerHighest = Color(0xFF373642),
-    outline = Color(0xFF8F8C9C), outlineVariant = Color(0xFF464552),
+    primary = AccentLight, onPrimary = Color(0xFF282924),
+    primaryContainer = Color(0xFF3C3E38), onPrimaryContainer = Color(0xFFECECE6),
+    secondary = Color(0xFFC4C5BD), onSecondary = Color(0xFF2E302A),
+    secondaryContainer = Color(0xFF454740), onSecondaryContainer = Color(0xFFE7E8E0),
+    tertiary = Color(0xFFB7B9B0), onTertiary = Color(0xFF292B26),
+    tertiaryContainer = Color(0xFF4F514A), onTertiaryContainer = Color(0xFFE9EAE2),
+    background = Color(0xFF121310), onBackground = Color(0xFFE6E7E0),
+    surface = Color(0xFF1A1B18), onSurface = Color(0xFFE6E7E0),
+    surfaceVariant = Color(0xFF30322D), onSurfaceVariant = Color(0xFFC1C3BA),
+    surfaceDim = Color(0xFF121310), surfaceBright = Color(0xFF3A3C35),
+    surfaceContainerLowest = Color(0xFF0D0E0C), surfaceContainerLow = Color(0xFF1E1F1B),
+    surfaceContainer = Color(0xFF23241F), surfaceContainerHigh = Color(0xFF2D2F29),
+    surfaceContainerHighest = Color(0xFF383A33),
+    outline = Color(0xFF8E9087), outlineVariant = Color(0xFF464841),
     error = Color(0xFFF2B8B5), onError = Color(0xFF601410),
     errorContainer = Color(0xFF8C1D18), onErrorContainer = Color(0xFFF9DEDC),
-    inverseSurface = Color(0xFFE6E3ED), inverseOnSurface = Color(0xFF30303B),
+    inverseSurface = Color(0xFFE6E7E0), inverseOnSurface = Color(0xFF30312C),
     inversePrimary = Accent, surfaceTint = AccentLight,
 )
 
