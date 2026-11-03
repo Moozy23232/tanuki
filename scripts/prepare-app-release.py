@@ -46,6 +46,22 @@ def native_checksum(directory):
     (directory / "native-source-SHA256SUMS").write_text(f"{digest(native)}  {native.name}\n")
 
 
+def build_apk_path(root, channel, version):
+    if channel == "workspacecheck":
+        return root / "app/build/outputs/apk/modern/release/app-modern-release.apk"
+    return root / "artifacts/builds/production" / version / f"Tanuki-{version}-arm64-release.apk"
+
+
+def copy_source_attachments(root, directory, version):
+    # 构建中间产物按类别保存，完整发布目录仍保持可直接上传的扁平附件结构。
+    sources = root / "artifacts/sources"
+    archive = f"Tanuki-{version}-source.zip"
+    shutil.copy2(sources / archive, directory / archive)
+    native = "Tanuki-native-corresponding-sources.tar.gz"
+    shutil.copy2(sources / "native" / native, directory / native)
+    native_checksum(directory)
+
+
 def certificate_digest(text):
     values = re.findall(r"^Signer #\d+ certificate SHA-256 digest: ([0-9a-fA-F]{64})\s*$", text, re.MULTILINE)
     if len(values) != 1:
@@ -120,8 +136,7 @@ def main():
     command = ["env", f"TANUKI_VERSION_NAME={options.version}", f"TANUKI_VERSION_CODE={options.version_code}",
                *build_command(options.channel, options.version, options.version_code)]
     run(command, "构建指定渠道")
-    source_apk = (ROOT / "app/build/outputs/apk/modern/release/app-modern-release.apk" if options.channel == "workspacecheck"
-                  else ROOT / "artifacts" / f"Tanuki-{options.version}-arm64-release.apk")
+    source_apk = build_apk_path(ROOT, options.channel, options.version)
     entry = entry_for(source_apk, options.channel, options.version, options.version_code, **inspect_archive(source_apk, sdk))
     for old in prior:
         if old["packageName"] != entry["packageName"]:
@@ -136,9 +151,7 @@ def main():
     run(["bash", "scripts/package-native-sources.sh"], "打包原生对应源码")
     run([sys.executable, "scripts/package-source.py", "--version", options.version], "打包本次完整源码")
     source_zip = f"Tanuki-{options.version}-source.zip"
-    for name in (source_zip, "Tanuki-native-corresponding-sources.tar.gz"):
-        shutil.copy2(ROOT / "artifacts" / name, directory / name)
-    native_checksum(directory)
+    copy_source_attachments(ROOT, directory, options.version)
     selected = [directory / item["assetName"] for item in entries] + [manifest, directory / source_zip,
                 directory / "Tanuki-native-corresponding-sources.tar.gz", directory / "native-source-SHA256SUMS"]
     (directory / "RELEASE-SHA256SUMS").write_text("".join(f"{digest(path)}  {path.name}\n" for path in selected))

@@ -4,10 +4,12 @@
 
 ## 最新交接
 
-[DeepSeek 登录跳转、版本打包、应用内更新与 30 秒交回](handoffs/20261103-1316-login-app-update.md)。
+[产物目录分类与旧包归档](handoffs/20261103-1607-artifact-layout.md)（已完成，43项宿主回归和源码/归档校验通过）。本次将 `artifacts/` 分为发布、源码、构建准备和历史归档，版本保持 v0.1.1/3，不重编 APK、不操作设备。用户收尾明确授权 commit/push，执行回执另行报告；不上传二进制或发布 Release。前轮产品实现/验证与源码推送已完成（`50da4b3`），详见[产品交接](handoffs/20261103-1316-login-app-update.md)。
+
+以下产品功能和 Android 验证属于前轮，本次没有重跑：
 
 - 用户要求已实现：官方登录跳转修复、设置页 Tanuki 更新按钮、未来发布先问版本号再打包、浏览器 30 秒无操作归还 AI。显式撤销不被计时恢复。
-- 用户最终更正为 **v0.1.1**，APK `versionName=0.1.1` / `versionCode=3`（不回退内部代码）；本次授权打包和源码 commit/push，**Release 由用户自己发布，Agent 不创建 tag/上传**。
+- 用户最终更正为 **v0.1.1**，APK `versionName=0.1.1` / `versionCode=3`（不回退内部代码）；前轮授权的打包和源码 commit/push 已完成，**Release 由用户自己发布，Agent 不创建 tag/上传**。
 - 后续反馈「GitHub 请求受限」已改为公开 Feed/Release 清单，不调用 GitHub REST API、不要求 token。复用模拟器实际检查已显示「暂无可用于应用内更新的 Release」，不是 API 限流；用户上传同版本 `app-update.json` 才具备后续更新发现条件。
 - 最终 v0.1.1 已重新构建、97 项 JVM 通过、debug lint 为 0 error/53 warnings/1 information；实际发布 APK 在同一 AVD 覆盖后 **6 类20 项全过（113.154 秒）**，包括读回覆盖前合成私有文件。此前 debug 19 项与旧 0.1.2 包 20 项是本轮中间验证；不是完整 Linux 环境或真实账号升级验收。
 
@@ -28,7 +30,7 @@
 
 ### 已实现与已测
 
-- 当前四项功能及 API 限流修复的源码/回归已接入；完整命令、失败修正、计数与设备边界见最新交接与 [TEST-REPORT](TEST-REPORT.md)。模拟器不等同真机，合成 callback 不等同真实账号登录。
+- 当前四项功能及 API 限流修复的源码/回归已接入；完整命令、失败修正、计数与设备边界见[产品交接](handoffs/20261103-1316-login-app-update.md)与 [TEST-REPORT](TEST-REPORT.md)。模拟器不等同真机，合成 callback 不等同真实账号登录。
 - 既有 DSH 解析优化保留：随包官方固定锁、已核对缓存复用，弱网请求重试/超时与进程组取消，未关闭 TLS/integrity 或把镜像当官方元数据来源。实现细节见 [组件](COMPONENTS.md)，此前验证见 [DSH 修复交接](handoffs/20261103-1051-dsh-resolution-cache.md)，不冒充本轮跑了首次安装/测速。
 - Git 前归档必要结论、清理过期交接、修复引用、重查实际暂存和源码 ZIP 的规则已固化于 `AGENTS.md` / [PUBLICATION](PUBLICATION.md)，不按日期盲删仍有效依据。前轮源码交付基线为 `c0680b4`。
 
@@ -41,7 +43,8 @@
 
 ## 产物、Git 与下一步
 
-- 本版交付目录为 `artifacts/releases/0.1.1/`，不是根目录旧 0.1.0 开发 APK；已生成本版 APK/更新清单/完整源码/原生对应源码与散列 6 个附件。源码 ZIP 随最终文档重打（280 条目/277 文件指纹），外部 SHA 与公开边界/独立解压结果见最新交接。
-- 本轮 Git 授权范围是源码 commit/push 至 `origin/main`，不包含创建 tag、上传二进制或发布 Release；最终提交/推送回执另行明确，不把打包当已发布。
+- 有效发布只在 `artifacts/releases/0.1.1/`，仍为6个附件且 APK/更新清单不变。根目录散落旧包已迁至 `artifacts/archive/`，被撤回的0.1.2不再放在有效发布目录；原22个文件内容全部保留。完整目录与校验方式见[取包说明](ARTIFACTS.md)，生成副本为 `artifacts/README.md`。
+- 源码打包输出改为 `artifacts/sources/`，原生对应源码在 `sources/native/`，正式签名中间包在 `builds/production/<版本>/`；脚本已同步，防止下次重新散落。源码 ZIP 和当前发布目录源码副本随文档重打，检查结果见最新交接。
+- 前轮源码已推送 `origin/main`（`50da4b3`），没有创建 tag 或发布 Release；本轮目录整理收尾时用户已明确要求 push，按授权提交脚本/文档；产物继续由用户自行上传，Agent 不发布 Release。
 - 后续按 [发布步骤](RELEASE.md) 由用户上传同一 tag 的 APK、`app-update.json`、完整源码/原生对应源码与校验文件。遇签名/版本不兼容不卸载旧 App 绕过。
 - 下一任新建唯一交接，复用上述 AVD，先确认无安装/真实任务再测试；不要重启已暂停的 API Key 工作。必要专题入口见 [上手指南](AGENT-QUICKSTART.md)。

@@ -64,6 +64,7 @@ def public_file(path):
     def test_release_signing_requires_keystore_outside_repository(self):
         self.runner_fixture()
         shutil.copy2(ROOT / "scripts/sign-release.sh", self.root / "scripts/sign-release.sh")
+        self.put("docs/ARTIFACTS.md", "合成产物目录说明\n")
         inside = self.put("keys/release.jks", "synthetic-keystore")
         outside = Path(self.temp.name) / "release.jks"
         outside.write_text("synthetic-keystore")
@@ -85,6 +86,11 @@ if args[0] == 'sign':
         self.assertEqual(0, result.returncode, result.stderr)
         events = [json.loads(line) for line in (self.root / "events.jsonl").read_text().splitlines()]
         self.assertIn(["gradlew", "-PdevelopmentReleaseSigning=false", "-PtanukiVersionName=0.1.1", "-PtanukiVersionCode=2", ":app:assembleModernRelease"], events)
+        folder = self.root / "artifacts/builds/production/0.1.1"
+        self.assertEqual(b"synthetic-apk", (folder / "Tanuki-0.1.1-arm64-release.apk").read_bytes())
+        self.assertTrue((folder / "release-signature.txt").is_file())
+        self.assertTrue((folder / "release-SHA256SUMS").read_text().endswith("  Tanuki-0.1.1-arm64-release.apk\n"))
+        self.assertFalse(list((self.root / "artifacts").glob("*.apk")))
 
     def test_clean_handoff_and_move_are_portable(self):
         self.handoff_fixture()

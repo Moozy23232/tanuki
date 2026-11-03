@@ -129,6 +129,7 @@ bash scripts/verify-workspace.sh \
 
 1. 完成本次交接记录并更新 `AGENT-STATE.md`，诚实写明实际验证及未测范围。每次 Git 提交/推送前按 [上传检查](PUBLICATION.md) 先归档必要结论、删除已过期交接并修复引用；当前记录、模板和仍需使用的验证/未完成记录保留。
 2. `python3 scripts/check-handoff.py --record docs/handoffs/<本次记录>.md`，再不带参数检查。
-3. `python3 scripts/check-publication.py --git` 检查实际Git候选；`python3 scripts/package-source.py` 生成 `artifacts/Tanuki-0.1.1-source.zip`，再检查ZIP内容、嵌套附件与 `artifacts/SOURCE-SHA256SUMS`。
+3. `python3 scripts/check-publication.py --git` 检查实际Git候选；`python3 scripts/package-source.py` 生成 `artifacts/sources/Tanuki-0.1.1-source.zip`，再检查ZIP内容、嵌套附件与 `artifacts/SOURCE-SHA256SUMS`。
 4. APK有变化才更新其交付副本/校验并核对包名、签名和安装目标。仅文档/宿主脚本变化，不声称业务APK已重编译或设备测试全套重跑。
-5. 最终答复给清楚的产物路径、完成项、暂停/阻塞项和下一步，不留下只存在聊天里的必要信息。
+5. 产物分类见 [取包说明](ARTIFACTS.md)：有效发布只在 `artifacts/releases/<版本>/`，源码准备区为 `artifacts/sources/`，旧包归入 `artifacts/archive/`，不要在根目录散放旧 APK/ZIP。
+6. 最终答复给清楚的产物路径、完成项、暂停/阻塞项和下一步，不留下只存在聊天里的必要信息。

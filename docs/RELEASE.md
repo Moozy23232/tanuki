@@ -11,7 +11,7 @@ source scripts/env.sh
 python3 scripts/prepare-app-release.py --version 0.1.1 --version-code 3 --channel workspacecheck
 ```
 
-脚本先校验参数与当前交接，再串行构建指定版本并核对真实 APK 包名/版本/SDK/证书；输出 **`artifacts/releases/0.1.1/`**：
+脚本先校验参数与当前交接，再串行构建指定版本并核对真实 APK 包名/版本/SDK/证书；输出 **`artifacts/releases/0.1.1/`**（只从此目录取发布附件；分类与历史归档见[取包说明](ARTIFACTS.md)）：
 
 - `Tanuki-0.1.1-workspacecheck-arm64-release.apk`
 - `app-update.json`：应用内更新所需清单；不是手写的可信证书来源。

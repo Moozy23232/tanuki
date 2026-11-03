@@ -31,11 +31,13 @@ if (len(version) > 80 or not re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z
     raise SystemExit(64)
 PY
 ./gradlew -PdevelopmentReleaseSigning=false "-PtanukiVersionName=$TANUKI_VERSION_NAME" "-PtanukiVersionCode=$TANUKI_VERSION_CODE" :app:assembleModernRelease
-mkdir -p artifacts
-TANUKI_SIGNED_APK="$TANUKI_PROJECT/artifacts/Tanuki-$TANUKI_VERSION_NAME-arm64-release.apk"
+TANUKI_OUTPUT="$TANUKI_PROJECT/artifacts/builds/production/$TANUKI_VERSION_NAME"
+mkdir -p "$TANUKI_OUTPUT"
+cp docs/ARTIFACTS.md artifacts/README.md
+TANUKI_SIGNED_APK="$TANUKI_OUTPUT/Tanuki-$TANUKI_VERSION_NAME-arm64-release.apk"
 "$TANUKI_SDK/build-tools/34.0.0/apksigner" sign --ks "$TANUKI_KEYSTORE" --ks-key-alias "$TANUKI_SIGNING_ALIAS" \
   --ks-pass env:TANUKI_STORE_PASSWORD --key-pass env:TANUKI_KEY_PASSWORD \
   --out "$TANUKI_SIGNED_APK" app/build/outputs/apk/modern/release/app-modern-release-unsigned.apk
-"$TANUKI_SDK/build-tools/34.0.0/apksigner" verify --verbose --print-certs "$TANUKI_SIGNED_APK" > artifacts/release-signature.txt
-shasum -a 256 "$TANUKI_SIGNED_APK" > artifacts/release-SHA256SUMS
+"$TANUKI_SDK/build-tools/34.0.0/apksigner" verify --verbose --print-certs "$TANUKI_SIGNED_APK" > "$TANUKI_OUTPUT/release-signature.txt"
+(cd "$TANUKI_OUTPUT" && shasum -a 256 "$(basename "$TANUKI_SIGNED_APK")" > release-SHA256SUMS)
 printf '%s\n' "$TANUKI_SIGNED_APK"

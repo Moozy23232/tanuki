@@ -79,10 +79,49 @@ class AppReleaseTests(unittest.TestCase):
         source.ROOT = self.apk.parent
         source.FILES, source.TREES, source.EXTRAS = ("fixture.txt",), (), ()
         (source.ROOT / "fixture.txt").write_text("synthetic-public-source")
+        (source.ROOT / "docs").mkdir()
+        (source.ROOT / "docs/ARTIFACTS.md").write_text("合成目录说明")
         with contextlib.redirect_stdout(io.StringIO()):
             source.main("0.1.1")
-        with zipfile.ZipFile(source.ROOT / "artifacts/Tanuki-0.1.1-source.zip") as archive:
+        output = source.ROOT / "artifacts/sources/Tanuki-0.1.1-source.zip"
+        with zipfile.ZipFile(output) as archive:
             self.assertEqual(["Tanuki-0.1.1/fixture.txt"], archive.namelist())
+        expected = f"{hashlib.sha256(output.read_bytes()).hexdigest()}  sources/{output.name}\n"
+        self.assertEqual(expected, (source.ROOT / "artifacts/SOURCE-SHA256SUMS").read_text())
+        self.assertEqual("合成目录说明", (source.ROOT / "artifacts/README.md").read_text())
+        self.assertFalse((source.ROOT / "artifacts" / output.name).exists())
+
+    def test_release_collects_only_categorized_source_outputs(self):
+        root = self.apk.parent
+        sources = root / "artifacts/sources"
+        (sources / "native").mkdir(parents=True)
+        (sources / "Tanuki-0.1.1-source.zip").write_bytes(b"synthetic-source")
+        (sources / "native/Tanuki-native-corresponding-sources.tar.gz").write_bytes(b"synthetic-native")
+        bundle = root / "artifacts/releases/0.1.1"
+        bundle.mkdir(parents=True)
+        release.copy_source_attachments(root, bundle, "0.1.1")
+        self.assertEqual(b"synthetic-source", (bundle / "Tanuki-0.1.1-source.zip").read_bytes())
+        self.assertEqual(b"synthetic-native", (bundle / "Tanuki-native-corresponding-sources.tar.gz").read_bytes())
+        self.assertIn("  Tanuki-native-corresponding-sources.tar.gz\n", (bundle / "native-source-SHA256SUMS").read_text())
+        self.assertEqual(3, len(list(bundle.iterdir())))
+
+    def test_native_source_allowlist_follows_new_directory_only(self):
+        spec = importlib.util.spec_from_file_location("source_package", ROOT / "scripts/package-source.py")
+        source = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(source)
+        expected = {"artifacts/sources/native/Tanuki-native-corresponding-sources.tar.gz", "artifacts/sources/native/native-source-SHA256SUMS"}
+        self.assertEqual(expected, set(source.EXTRAS))
+        for name in expected:
+            self.assertTrue(source.public_name(Path(name)))
+        self.assertFalse(source.public_name(Path("artifacts/archive/old.apk")))
+        self.assertFalse(source.public_name(Path("artifacts/Tanuki-native-corresponding-sources.tar.gz")))
+
+    def test_production_apk_is_staged_separately_from_release_bundles(self):
+        path = release.build_apk_path(self.apk.parent, "production", "0.1.1")
+        self.assertEqual(self.apk.parent / "artifacts/builds/production/0.1.1/Tanuki-0.1.1-arm64-release.apk", path)
+        self.assertIn('artifacts/builds/production/$TANUKI_VERSION_NAME', (ROOT / "scripts/sign-release.sh").read_text())
+        self.assertEqual(self.apk.parent / "app/build/outputs/apk/modern/release/app-modern-release.apk",
+                         release.build_apk_path(self.apk.parent, "workspacecheck", "0.1.1"))
 
     def test_native_checksum_is_relative_to_the_published_bundle(self):
         native = self.apk.parent / "Tanuki-native-corresponding-sources.tar.gz"

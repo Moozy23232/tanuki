@@ -4,11 +4,12 @@ from pathlib import Path
 import argparse
 import hashlib
 import re
+import shutil
 import zipfile
 
 ROOT = Path(__file__).resolve().parent.parent
 NAME = "Tanuki-0.1.1"
-OUTPUT = ROOT / "artifacts" / f"{NAME}-source.zip"
+OUTPUT = ROOT / "artifacts/sources" / f"{NAME}-source.zip"
 FILES = (
     ".gitignore", "AGENTS.md", "LICENSE", "README.md", "THIRD_PARTY_NOTICES",
     "build.gradle.kts", "settings.gradle.kts", "gradle.properties",
@@ -16,7 +17,7 @@ FILES = (
 )
 # 原生对应源码附件不作为 Git 检出或可迁移源码指纹的前置条件；
 # 两个附件都已生成时才一并打包，以满足二进制分发的许可要求。
-EXTRAS = ("artifacts/Tanuki-native-corresponding-sources.tar.gz", "artifacts/native-source-SHA256SUMS")
+EXTRAS = ("artifacts/sources/native/Tanuki-native-corresponding-sources.tar.gz", "artifacts/sources/native/native-source-SHA256SUMS")
 TREES = ("app/src", "gradle", "runtime", "scripts", "docs", "licenses")
 OMIT_PARTS = {"__pycache__", ".DS_Store", ".git", ".gradle", ".build", "build", "private", ".private",
               ".idea", ".vscode", ".ssh", ".aws", ".kotlin", ".cxx", ".externalNativeBuild", ".cache",
@@ -62,7 +63,7 @@ def main(version=None) -> None:
     if version is not None and (len(version) > 80 or not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z]+(?:[.-][0-9A-Za-z]+)*)?", version)):
         raise ValueError("Invalid confirmed source version")
     archive_name = f"Tanuki-{version}" if version is not None else NAME
-    output = ROOT / "artifacts" / f"{archive_name}-source.zip"
+    output = ROOT / "artifacts/sources" / f"{archive_name}-source.zip"
     selected = set()
     for name in FILES:
         path = ROOT / name
@@ -82,7 +83,10 @@ def main(version=None) -> None:
         if not all(path.is_file() and public_file(path) for path in extras):
             raise FileNotFoundError("Incomplete native source attachments; run scripts/package-native-sources.sh")
         selected.update(extras)
-    output.parent.mkdir(exist_ok=True)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    guide = ROOT / "docs/ARTIFACTS.md"
+    if guide.is_file():
+        shutil.copy2(guide, ROOT / "artifacts/README.md")
     with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
         for path in sorted(selected):
             relative = path.relative_to(ROOT)
@@ -96,8 +100,8 @@ def main(version=None) -> None:
         for chunk in iter(lambda: stream.read(1024 * 1024), b""):
             hasher.update(chunk)
     digest = hasher.hexdigest()
-    checksum = output.parent / "SOURCE-SHA256SUMS"
-    checksum.write_text(f"{digest}  {output.name}\n")
+    checksum = ROOT / "artifacts/SOURCE-SHA256SUMS"
+    checksum.write_text(f"{digest}  sources/{output.name}\n")
     print(f"source_files={len(selected)} bytes={output.stat().st_size}")
     print("native_sources=" + ("included" if all(path in selected for path in extras)
                                else "absent; prepare corresponding sources before distributing native binaries"))

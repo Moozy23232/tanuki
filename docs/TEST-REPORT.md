@@ -2,6 +2,13 @@
 
 Tanuki验证目标：`com.tanuki.modern.workspacecheck`，命名空间 `com.tanuki`，ARM64、minSdk26/targetSdk34。debug/release构建与证书、宿主与设备执行必须分别记录，源码中有测试不等于已运行。
 
+## 产物分类验证（2026-11-03，非产品重测）
+
+- `scripts/test-app-release.py` 12项、`test-agent-workflow.py` 12项、`test-publication.py` 19项均通过；源码分类、原生附件白名单、发布收集、模拟正式签名分类输出和清单相对路径有回归覆盖。两个签名/原生打包 shell 语法检查通过。
+- 迁移前记录22个产物文件的SHA-256，分类后逐一确认所有原始内容仍存在，未删除旧APK/源码；当前发布只保留0.1.1，旧0.1.2移入撤回归档。归档清单含16个文件。
+- 新增路径回归初始1失败/3错误；实现后通过。首次工作流回归有1项合成fixture缺少新说明文件，补fixture及实际分类输出断言后12项通过，未放宽签名路径保护。
+- 本次只改宿主脚本/文档和移动产物，未重编APK、未运行Gradle/JVM/lint/模拟器、未操作正式密钥或重新执行原生源码打包；下述97项JVM与20项设备是前轮结果，不计为本轮新跑。最终交接/归档校验见[本轮记录](handoffs/20261103-1607-artifact-layout.md)。
+
 ## v0.1.1 产品验证：登录、空闲权限与应用更新（2026-11-03）
 
 目标 `com.tanuki.modern.workspacecheck`、`versionName=0.1.1` / `versionCode=3`，开发证书。代码改动先加回归再实现；不是生产证书/真实登录/模型任务的正式验收。

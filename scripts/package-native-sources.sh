@@ -5,7 +5,8 @@ TANUKI_PROOT="$PWD/.build/sources/termux-proot"
 TANUKI_COMMIT=b27d81a68d765f3462e807f4a14e01a03f8e89ea
 [ "$(git -C "$TANUKI_PROOT" rev-parse HEAD)" = "$TANUKI_COMMIT" ]
 [ "$(shasum -a 256 .build/downloads/talloc.tar.gz | awk '{print $1}')" = dc46c40b9f46bb34dd97fe41f548b0e8b247b77a918576733c528e83abd854dd ]
-mkdir -p artifacts .build
+mkdir -p artifacts/sources/native .build
+cp docs/ARTIFACTS.md artifacts/README.md
 TANUKI_STAGE="$(mktemp -d "$PWD/.build/native-source-package.XXXXXX")"
 trap 'rm -rf "$TANUKI_STAGE"' EXIT
 mkdir -p "$TANUKI_STAGE/.build/sources/termux-proot" "$TANUKI_STAGE/runtime/patches" "$TANUKI_STAGE/app/src/main/cpp" "$TANUKI_STAGE/licenses"
@@ -49,11 +50,11 @@ def public_metadata(info):
     return info
 
 
-output = Path("artifacts/Tanuki-native-corresponding-sources.tar.gz")
+output = Path("artifacts/sources/native/Tanuki-native-corresponding-sources.tar.gz")
 with output.open("wb") as stream:
     with gzip.GzipFile(filename="", mode="wb", fileobj=stream, mtime=0) as compressed:
         with tarfile.open(fileobj=compressed, mode="w", format=tarfile.PAX_FORMAT) as archive:
             archive.add(os.environ["TANUKI_STAGE"], arcname=".", filter=public_metadata)
 PY
-shasum -a 256 artifacts/Tanuki-native-corresponding-sources.tar.gz > artifacts/native-source-SHA256SUMS
-printf '%s\n' 'artifacts/Tanuki-native-corresponding-sources.tar.gz'
+(cd artifacts/sources/native && shasum -a 256 Tanuki-native-corresponding-sources.tar.gz > native-source-SHA256SUMS)
+printf '%s\n' 'artifacts/sources/native/Tanuki-native-corresponding-sources.tar.gz'

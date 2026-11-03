@@ -67,6 +67,7 @@
 - 用户说「发布 / 发版」时，**先询问并确认版本号是多少，再打包**；不能自行沿用开发版、猜版本或先打包后补问。日常 debug/验证构建不等于发布，不需要擅自定正式版本。
 - 确认包名/签名渠道与递增 `versionCode`（必须高于该包已安装/已发布的所有版本），再使用 `scripts/prepare-app-release.py --version <确认版本> --version-code <递增代码> --channel <workspacecheck|production>`。工作区验证包与正式包不能互相覆盖。
 - 打包必须核对 APK 实际包名、版本、Android 要求、证书、大小/SHA-256，输出 `app-update.json`、对应源码与校验清单；保留安装环境，不卸载或清数据。正式密钥须在仓库外，通过环境传递密码，不读取/输出密钥或密码。
+- 产物按 [取包说明](docs/ARTIFACTS.md) 分类：完整发布在 `artifacts/releases/<版本>/`，源码在 `sources/`，签名中间包在 `builds/`，旧包在 `archive/`。不在根目录散放 APK/ZIP；发版时同步取包说明与生成的 `artifacts/README.md`，不能按最大版本号选择已撤回候选包。
 - 打包不等于创建 tag、上传 GitHub Release 或自动推送；按用户当前授权分别执行。开发签名包标 Pre-release。完整流程见 [发布说明](docs/RELEASE.md) 与 [应用内更新](docs/APP-UPDATES.md)。
 
 ## 6. 推荐入口
