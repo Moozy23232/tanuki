@@ -2,13 +2,16 @@
 
 Tanuki验证目标：`com.tanuki.modern.workspacecheck`，命名空间 `com.tanuki`，ARM64、minSdk26/targetSdk34。debug/release构建与证书、宿主与设备执行必须分别记录，源码中有测试不等于已运行。
 
-## v0.1.3/5 安装器URI修复（2026-11-03，最终打包进行中）
+## v0.1.3/5 安装器URI修复与发布包验证（2026-11-03）
 
 - 用户在「设置→应用更新」安装时报MIUI FileProvider未导出拒绝，要求修复推送后生成0.1.3。0.1.2/code4中间包已归档，最终版本0.1.3/code5，保持原workspacecheck包名/开发证书。
 - 先补安装器回归，再实现ClipData与系统处理器单文件只读授权、最多10分钟及下次操作/失败回收、进程重建按原期限恢复计时。实际系统确认页仍复现Permission Denial，定位原两个authority共用同一provider组件；改为独立更新/浏览器子类后通过，未开放provider或扩大目录。
 - 新类尚未实现时编译29秒失败；实现后有一处ActivityInfo空值编译问题，修正后debug构建/JVM/lint通过（2分35秒）。首次设备5项中4通过，实际安装器确认页等待失败，单例重跑同样失败；系统日志证明获取provider被拒绝。拆分provider后debug构建2分20秒通过，**5项安装器回归全过，4.723秒**。实际系统安装器已读出APK标签并显示确认页，随后取消，没有自动安装。
 - 权限回归核对Android真实安装器UID与普通匹配App UID、ClipData/单文件只读、拒绝写入/持久/前缀授权标记、旧文件与到期回收、非更新URI拒绝、不同provider组件及非导出状态。修复后97项JVM全过，debug lint0错误/53警告/1提示；发布12/公开边界19项宿主复跑通过。
-- 这些为AOSP ARM64 API34合成回归；MIUI真机、完整Linux环境、真实账号/模型仍未测，进程死亡后的期限恢复未实际杀进程验证。最终release结果待修复推送与打包后记录；既有全屏退出断言未在本轮修复。完整步骤见[本次交接](handoffs/20261103-1906-sync-package-012.md)。
+- 修复先推送为6cfda3e，再构建最终0.1.3/code5候选release：构建102.7秒、原生对应源码17.4秒，实际APK为com.tanuki.modern.workspacecheck、ARM64、min26/target34、non-debuggable，开发证书不变。APK **7,926,865字节**，SHA-256 `dbbb4cf2647ed00f6a44423c61a4cdaef76bad730a61a3aaced48f1f8d18b6df`；两个文件provider组件独立、均非导出且仅允许URI授权，清单/签名/字节/源码与原生附件校验和公开边界扫描通过。
+- 最终release AndroidTest、release JVM及release lint单一Gradle构建1分52秒成功；**release JVM97项全过、0失败/错误/跳过，release lint0错误/53警告/1提示**。同一AVD实际覆盖发布APK及配套test，携带 `verifyUpgradeMarker=true` 运行11类选定 **34项全过，171.826秒**，包含新增5项、真实系统确认页、浏览器/文件/进度相关既有范围与覆盖前合成文件原值；无跳过、host timeout、ADB断线或仪器中断。
+- 独立APK核对最初误把合并manifest的provider总数断言为2，忽略AndroidX Startup，改成按updates/browserfiles两个authority筛选后通过；这是核验脚本误判，未修改APK或放宽两者独立/非导出/只读边界。最终收尾文档统一提交后刷新源码与6附件清单，APK必须维持上述已测SHA。
+- 这些为AOSP ARM64 API34合成回归；MIUI真机、完整Linux环境、真实账号/模型仍未测，进程死亡后的期限恢复未实际杀进程验证。既有全屏退出断言未在本轮修复或纳入34项通过。完整步骤见[本次交接](handoffs/20261103-1906-sync-package-012.md)。
 
 ## v0.1.2/4 中间包验证（2026-11-03，已归档不交付）
 
@@ -144,10 +147,10 @@ Git与源码边界扫描通过，249个Git候选、0索引、0发现；公开归
 
 ## 未测与限制
 
-- 当前APK桌面/通知、生命周期、进程所有权、guest文件映射、Skill与Blob实际交互未设备执行。
-- 全屏像素/系统栏/旋转/网页尾部/AI缩放/小窗须设备回归，不能只查DOM。
+- 本轮未执行长期生命周期、真实guest文件/进程所有权与真实Skill/模型任务；桌面标识、通知停止和浏览器/文件的合成范围以本版首节为准。
+- 本轮已做合成整页尾部像素、AI缩放和小窗回归；跨机型/旋转、既有退出全屏断言仍须单独验收，不能只查DOM。
 - 真实模型/微信登录、HyperOS、长期后台、跨WebView/Android、16KB page-size、全部更新/恢复和正式签名未全面验收。
 - 快照仍拒绝超出既有白名单的绝对软链接，包括只读工具/下载挂载；未扩展该安全范围或实测相应场景。
 - 当前登录跳转仅合成回归已验证，真实账号仍未验收；API Key 保存继续暂停。跳过、超时、失败或 ADB 断开不计通过。
 
-设备测试先确认专用数据、已装运行环境且无apt/dpkg/真实任务，按[上手指南](AGENT-QUICKSTART.md)明确选择设备。本轮不安装、不清数据、不迁移数据。
+设备测试先确认专用数据、无apt/dpkg/真实任务并明确选择设备；本轮对同包同证书APK覆盖安装，不卸载、清数据或恢复快照。依赖完整运行环境的用例仍需另满足前置条件，见[上手指南](AGENT-QUICKSTART.md)。
