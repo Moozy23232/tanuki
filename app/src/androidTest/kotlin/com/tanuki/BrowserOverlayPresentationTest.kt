@@ -347,7 +347,7 @@ class BrowserOverlayPresentationTest {
         find("收回 AI 浏览器权限？"); assertFalse(snapshot(browser).getBoolean("ok"))
         screenshot("system-overlay-takeover.png")
         click("继续交给 AI"); await { !browser.state.value.takeoverRequested }; assertTrue(snapshot(browser).getBoolean("ok"))
-        tap("Browser laboratory"); click("收回权限")
+        tap("Browser laboratory"); click("撤销 AI 权限")
         assertNull(browser.state.value.authorizedClient); assertFalse(browser.library.state.value.aiControlEnabled)
         click("交回 AI 浏览器权限"); assertTrue(snapshot(browser).getBoolean("ok"))
         permission(false)

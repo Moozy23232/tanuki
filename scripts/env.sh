@@ -2,7 +2,8 @@
 # 使用source加载本文件，不修改系统Java或全局Shell配置。
 set -euo pipefail
 TANUKI_PROJECT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-TANUKI_SDK="${ANDROID_SDK_ROOT:-$HOME/Library/Android/sdk}"
+TANUKI_SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-$HOME/Library/Android/sdk}}"
+export ANDROID_HOME="$TANUKI_SDK" ANDROID_SDK_ROOT="$TANUKI_SDK"
 if [ -z "${TANUKI_JDK:-}" ]; then
   for candidate in "$TANUKI_PROJECT"/.build/jdk/*/Contents/Home; do
     if [ -x "$candidate/bin/java" ]; then TANUKI_JDK="$candidate"; break; fi

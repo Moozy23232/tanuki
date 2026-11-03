@@ -1,4 +1,11 @@
 plugins { id("com.android.application"); id("org.jetbrains.kotlin.android") }
+// 只有用户确认发布版本后才传入这两个参数；日常验证仍使用开发版，不隐式发布。
+val requestedVersion = providers.gradleProperty("tanukiVersionName").orNull
+val requestedCode = providers.gradleProperty("tanukiVersionCode").orNull
+require((requestedVersion == null) == (requestedCode == null)) { "发布版本名称与递增版本代码必须同时提供" }
+require(requestedVersion == null || requestedVersion.matches(Regex("[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z]+(?:[.-][0-9A-Za-z]+)*)?"))) { "发布版本名称格式无效" }
+val configuredCode = requestedCode?.toIntOrNull()?.also { require(it in 1..2_100_000_000) { "发布版本代码超出范围" } }
+require(requestedCode == null || configuredCode != null) { "发布版本代码必须是正整数" }
 android {
     namespace = "com.tanuki"
     compileSdk = 34
@@ -6,8 +13,8 @@ android {
         applicationId = "com.tanuki"
         minSdk = 26
         targetSdk = 34
-        versionCode = 1
-        versionName = "0.1.0-dev"
+        versionCode = configuredCode ?: 3
+        versionName = requestedVersion ?: "0.1.1"
         ndk { abiFilters += "arm64-v8a" }
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -65,6 +72,7 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
     implementation("org.apache.commons:commons-compress:1.27.1")
     testImplementation("junit:junit:4.13.2")
+    testImplementation("org.json:json:20240303")
     androidTestImplementation("androidx.test:runner:1.6.1")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
 }

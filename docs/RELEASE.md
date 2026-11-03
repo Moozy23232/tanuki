@@ -1,56 +1,78 @@
-# 签名与 GitHub Release
+# 签名、打包与 GitHub Release
 
-本工程未公开发布。`debug`、显式启用开发签名的 `release` 与 `probe` 使用本机开发证书；`release/probe` 为non-debuggable，开发证书只用于本地验证。正式发布应使用由用户持有、在仓库外备份的独立密钥。开发签名 APK 不能直接被不同正式证书的 APK 覆盖安装；不能为切换签名静默卸载 App，先处理数据导出与迁移。
+**用户说要发布时，先询问版本号；已经明确的版本不重复问。** 确认递增的 `versionCode` 和渠道后再打包，不用默认开发版本冒充用户版本。本次用户最终更正为 **v0.1.1**：`versionName=0.1.1`、`versionCode=3`（保留内部代码，不将已测构建降级），并授权源码 commit/push；**Release 由用户发布，Agent 不创建 tag 或上传**。
 
-## 本地 debug / release
+源码已推送不等于 Release 已发布；本地打包、Git 提交/推送、创建 tag、上传附件和更改可见性分别遵守当前授权。
 
-两份可安装验证包使用开发证书，目标均为 `com.tanuki.modern.workspacecheck`；release关闭调试标志，不等于正式签名发布，不启用代码压缩。
+## 一键准备已确认版本
 
 ```bash
 source scripts/env.sh
-./gradlew -PtestBuildType=debug -PdevelopmentReleaseSigning=true \
-  -I scripts/workspace-verification.init.gradle \
-  :app:assembleModernDebug :app:assembleModernRelease
+python3 scripts/prepare-app-release.py --version 0.1.1 --version-code 3 --channel workspacecheck
 ```
 
-输出分别为 `app/build/outputs/apk/modern/debug/app-modern-debug.apk` 和 `app/build/outputs/apk/modern/release/app-modern-release.apk`。不传 `developmentReleaseSigning=true` 时，release保持未签名；不能把开发签名当正式证书。脚本变量统一使用 `TANUKI_` 前缀，见 `scripts/env.sh`。
+脚本先校验参数与当前交接，再串行构建指定版本并核对真实 APK 包名/版本/SDK/证书；输出 **`artifacts/releases/0.1.1/`**：
 
-## 网页发布现有测试包
+- `Tanuki-0.1.1-workspacecheck-arm64-release.apk`
+- `app-update.json`：应用内更新所需清单；不是手写的可信证书来源。
+- `Tanuki-0.1.1-source.zip`：完整公开源码，另含必要原生对应源码附件。
+- `Tanuki-native-corresponding-sources.tar.gz`、`native-source-SHA256SUMS`
+- `RELEASE-SHA256SUMS`：以上附件的实际 SHA-256。
 
-现有 `artifacts/Tanuki-0.1.0-dev-workspacecheck-release.apk` 是 **release 构建类型、开发证书签名的测试包**，并非正式签名。若只是提供当前版本下载，先明确以测试版发布，建议勾选 GitHub 的 **Pre-release**：
+该渠道是 **开发证书签名、non-debuggable 的 release 构建**，并非正式签名。目标为 `com.tanuki.modern.workspacecheck`、ARM64、minSdk26/targetSdk34；保持原开发证书才能覆盖之前同包测试版。生成过程不读取或上传用户数据，不访问设备，不创建 tag/Release。
 
-1. 按 [上传检查](PUBLICATION.md) 清理过期交接、核对实际暂存与归档；将待发布源码提交并推送到目标仓库，重打源码 ZIP/外部清单。tag 应指向与 APK 对应的源码，不上传密钥、日志或整个 `artifacts/` 目录。
-2. 在目标 GitHub 仓库进入 **Releases → Draft a new release**，选择对应提交（通常为已核对的 `main`），创建未使用的 tag，例如 `v0.1.0-dev.1`，填写标题与下文要求的版本说明。tag 示例不表示 APK 内的 `versionName=0.1.0-dev` / `versionCode=1` 已改变。
-3. 逐项附加已核验的 release APK 与 `RELEASE-SHA256SUMS`、完整源码 ZIP 与 `SOURCE-SHA256SUMS`、原生对应源码包与 `native-source-SHA256SUMS`。GitHub 自动生成的 Source code 压缩包不保证包含原生对应源码，不能用它替代必要附件。
-4. 勾选 **Set as a pre-release**，复核目标仓库的可见性、版本说明和附件，确认授权范围后点击 **Publish release**。不要上传 unsigned APK；未签名包不能直接安装。
+```bash
+(cd artifacts/releases/0.1.1 && shasum -a 256 -c RELEASE-SHA256SUMS)
+```
 
-网页操作不需要本机安装 `gh`。上述是手工步骤，不是已执行的发布，也不意味着允许 Agent 自行创建 tag、上传或更改仓库可见性。
+文档/源码变化后也须重打源码 ZIP，并更新发布目录内副本及外部散列，不能沿用打包前的旧 ZIP。`python3 scripts/package-source.py --version 0.1.1` 仅生成源码包，不重新签发 APK；复制后重新核对发布清单。重新打 APK 则应重新执行准备脚本。
 
-当前测试包名为 `com.tanuki.modern.workspacecheck`，只能与相同包名/证书且系统允许的安装覆盖更新，更新前先结束安装/真实任务。标准正式签名脚本没有验证用 init 脚本，生成的是 `com.tanuki.modern`：它与当前测试包是不同安装，不能共享现有私有 Ubuntu/Node/DSH 或自动迁移数据。不要为此卸载旧 App；完整账号/会话便携迁移仍有[限制](UPDATE-RECOVERY.md)。
+## 用户网页发布
 
-## 正式签名
+1. 按 [上传检查](PUBLICATION.md) 归档必要结论、清理已过期交接、修复引用、检查实际暂存与公开归档，再将对应源码提交推送到目标仓库。tag 应指向与 APK 对应的提交。
+2. GitHub 仓库 → **Releases → Draft a new release**，选择该提交，创建未使用的 **`v0.1.1`** tag，标题可为 **Tanuki v0.1.1**。不要只改 tag 而保留 APK 内旧版本。
+3. 将上述发布目录的 **全部 6 个附件** 上传到同一个 Release，尤其不能漏掉 `app-update.json`。GitHub 自动生成的 Source code 压缩包不能替代带原生对应源码的完整附件。
+4. 本版为 workspacecheck 开发签名测试包，勾选 **Set as a pre-release**；核对版本说明、仓库可见性和附件，再由用户点击 **Publish release**。
 
-正式发布前先决定长期包名、版本号（`versionCode` 单调递增）、证书和升级/迁移策略，完成相应构建与验收。当前脚本的产物名固定含 `0.1.0-dev`，若变更版本，需同步核对签名/源码打包脚本和附件命名，不能只改 tag 就宣称 APK 已升级。
+应用内检查使用公开 Feed/Release 附件，不调用 GitHub API 或要求 token。测试渠道可以发现公开预发布；正式渠道只跟随 latest 稳定发布。详情及安装边界见 [应用内更新](APP-UPDATES.md)。
+
+## 正式签名渠道
+
+正式发布前先决定长期包名、单调递增版本和证书/迁移策略；使用用户持有并在仓库外备份的独立密钥。不要把开发证书宣传成正式证书，不以卸载旧 App 绕过签名限制。
 
 生成密钥应由用户在可信本机交互完成，例如：
 
 ```bash
-# 示例，不由 Agent 自动生成或提交；不要把密码放到命令行或 Git。
+# 示例，不由 Agent 自动生成或提交；密码不进入命令行或 Git。
 keytool -genkeypair -storetype PKCS12 -keystore /用户指定的仓库外目录/Tanuki.p12 \
   -alias tanuki -keyalg RSA -keysize 3072 -validity 10000
 ```
 
-签名步骤已经写成 [scripts/sign-release.sh](../scripts/sign-release.sh)。需要设置 `TANUKI_KEYSTORE`、`TANUKI_STORE_PASSWORD`，以及可选的 `TANUKI_SIGNING_ALIAS`、`TANUKI_KEY_PASSWORD`。密码只通过命名环境变量传给 apksigner，不写入源码、Gradle 配置或日志。脚本规范化密钥路径并拒绝仓库内目标（含相对路径及符号链接），显式构建unsigned release、签名、verify并计算SHA-256；不会上传文件。
+设置 `TANUKI_KEYSTORE`、`TANUKI_STORE_PASSWORD` 与可选的 `TANUKI_SIGNING_ALIAS` / `TANUKI_KEY_PASSWORD` 后：
 
-原生组件采用 GPL/LGPL，APK 发布必须同时提供完整对应源码、修改补丁、构建脚本和许可。`scripts/package-native-sources.sh` 在本地生成原生对应源码包，包含精确 PRoot 工作树、必要公共 Git 对象、talloc 原始源码、兼容头生成脚本与 supervisor；不包含用户 Git 配置或 reflog、签名密钥、SDK、JDK、API Key 或设备数据。所有 Android/Kotlin 封装源码也应随公开源码仓库或完整源码包提供。
+```bash
+source scripts/env.sh
+python3 scripts/prepare-app-release.py --version 用户已确认的版本 --version-code 已确认的递增整数 --channel production
+```
 
-发布说明应包含：
+[`scripts/sign-release.sh`](../scripts/sign-release.sh) 校验仓库外密钥路径（含相对路径/符号链接），从 `TANUKI_VERSION_NAME` / `TANUKI_VERSION_CODE` 接收明确版本，构建 unsigned、签名、verify、计算 SHA；密码只通过命名环境变量交给 apksigner，不写进源码/Gradle/日志。脚本不上传。
 
-- 应用版本、APK 文件名、ARM64、min/target/compile SDK、签名证书公开指纹、APK SHA-256。
-- Ubuntu、Node/npm、pnpm、DSH、PRoot 的实际版本、来源、校验与许可。
-- 安装所需空间、首次网络下载与模型 API 的数据发送边界。
-- 实测设备与构建类型；模拟器、真机、模型测试分别列明。
-- 旧 WebView 标准 API 兼容层、Android Linux 沙箱缺失、后台限制及回退边界。
-- 与 APK 对应的完整源码和构建方式；DSH 独立更新的版本兼容性不作无条件保证。
+标准 production 包名是 **`com.tanuki.modern`**，不同于当前 `.workspacecheck`，两者不能共享私有 Ubuntu/Node/DSH 或自动迁移数据。同包但不同签名也不能覆盖；完整账号/会话便携迁移仍有 [限制](UPDATE-RECOVERY.md)。本轮未使用正式密钥、未迁移签名、未构建或发布正式渠道。
 
-创建 GitHub repository / Release、设置可见性和上传 APK 之前，需要用户明确授权发布位置与可见范围。源码已推送不等于 Release 已发布，也不等于允许上传二进制；本轮仅说明流程，没有自动执行发布。
+## 本地 debug 验证
+
+```bash
+source scripts/env.sh
+./gradlew -PtestBuildType=debug -PdevelopmentReleaseSigning=true \
+  -PtanukiVersionName=0.1.1 -PtanukiVersionCode=3 \
+  -I scripts/workspace-verification.init.gradle \
+  :app:assembleModernDebug :app:assembleModernRelease
+```
+
+输出路径由构建类型共用：`app/build/outputs/apk/modern/debug/app-modern-debug.apk`、`app/build/outputs/apk/modern/release/app-modern-release.apk`。必须实际核验包名/证书，不凭文件名安装；不传开发签名属性时 release 默认 unsigned。
+
+## 许可与发布说明
+
+PRoot/talloc 等采用 GPL/LGPL，APK 发布必须同时提供精确对应源码、补丁、构建脚本和许可。[`scripts/package-native-sources.sh`](../scripts/package-native-sources.sh) 仅收集必要公共源码，不收集用户 Git 配置、reflog、签名密钥、SDK/JDK、账号或设备数据。
+
+版本说明应列明应用版本/ARM64/SDK、开发或正式签名、证书公开指纹、APK SHA-256；Ubuntu/Node/npm/pnpm/DSH/PRoot 实际版本与来源许可；空间与首次下载、模型 API 数据边界；模拟器/真机/合成登录/真实模型的分别验证范围；WebView123+与 Android Linux 沙箱/后台限制；完整源码和构建方式。不要把局部测试等同正式产品验收。

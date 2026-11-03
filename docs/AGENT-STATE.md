@@ -1,38 +1,47 @@
-# 当前状态
+# Tanuki 当前状态
 
-接手先读 [AGENTS](../AGENTS.md)、[上手指南](AGENT-QUICKSTART.md) 和 [测试现状](TEST-REPORT.md)。源码是实现事实，不依赖聊天或本机缓存。
+本文件是接手入口。先读本文件与最新交接，再读 [上手指南](AGENT-QUICKSTART.md)、[README](../README.md)、任务相关专题和 [安全](SECURITY.md)。源码是实现事实，[测试现状](TEST-REPORT.md) 是已测依据。
 
 ## 最新交接
 
-[Git 前清理过期交接](handoffs/20261103-1154-handoff-retention.md)（已完成，交接/源码包检查通过）。已在项目规则、上传流程、上手指南和模板固化提交/推送前清理；必要结论已归入当前状态/专题文档，未按日期删除仍有效依据。本次仅文档维护，新跑 19+12 项宿主回归及本地 Markdown 链接检查均通过；JVM/lint/设备未重跑。此前修复及交接提交 `adf9d55` / `b1ef5e3` 已推送 `origin/main`，本次改动/删除尚未暂存或提交，不自动推送或发布。发布步骤见[发布说明](RELEASE.md)，正式密钥、版本/tag 与发布范围仍待用户决定。
+[DeepSeek 登录跳转、版本打包、应用内更新与 30 秒交回](handoffs/20261103-1316-login-app-update.md)。
 
-仍需保留的记录：[构建验证依据](handoffs/20261102-2226-tanuki-builds.md)、[DSH 修复与设备待测项](handoffs/20261103-1051-dsh-resolution-cache.md)、[发布咨询与未决事项](handoffs/20261103-1158-release-publishing.md)。
+- 用户要求已实现：官方登录跳转修复、设置页 Tanuki 更新按钮、未来发布先问版本号再打包、浏览器 30 秒无操作归还 AI。显式撤销不被计时恢复。
+- 用户最终更正为 **v0.1.1**，APK `versionName=0.1.1` / `versionCode=3`（不回退内部代码）；本次授权打包和源码 commit/push，**Release 由用户自己发布，Agent 不创建 tag/上传**。
+- 后续反馈「GitHub 请求受限」已改为公开 Feed/Release 清单，不调用 GitHub REST API、不要求 token。复用模拟器实际检查已显示「暂无可用于应用内更新的 Release」，不是 API 限流；用户上传同版本 `app-update.json` 才具备后续更新发现条件。
+- 最终 v0.1.1 已重新构建、97 项 JVM 通过、debug lint 为 0 error/53 warnings/1 information；实际发布 APK 在同一 AVD 覆盖后 **6 类20 项全过（113.154 秒）**，包括读回覆盖前合成私有文件。此前 debug 19 项与旧 0.1.2 包 20 项是本轮中间验证；不是完整 Linux 环境或真实账号升级验收。
 
-## 产品与安装边界
+## 当前产品与数据边界
 
-- 产品：Tanuki `0.1.0-dev`；命名空间 `com.tanuki`，应用类 `TanukiApp`，主题 `Theme.Tanuki`。
-- 开发验证目标：`com.tanuki.modern.workspacecheck`；标准modern为 `com.tanuki.modern`，使用同一输出路径，构建后必须核验包名/target，不凭文件名安装。
-- 已生成的开发 APK：`artifacts/Tanuki-0.1.0-dev-workspacecheck-debug.apk`及同目录`Tanuki-0.1.0-dev-workspacecheck-release.apk`；同目标包/ARM64/开发证书，debug=true、release=false，包名/标签/证书/公开边界已核验。正式发布证书由用户保管。
-- 保留叶狸图案、浏览器全屏、新页Windows PC模式和官方DSH UI/模型/插件/Skills。
-- 不确认用户数据或真实任务前不覆盖安装、清数据或启动instrumentation；不自动迁移包名或证书不同的安装。
+| 项目 | 当前状态 |
+|---|---|
+| 开发/本次交付包 | `com.tanuki.modern.workspacecheck`；ARM64、minSdk26、targetSdk34、版本 0.1.1/3；开发证书的 non-debuggable release，不是正式签名 |
+| 标准 modern | `com.tanuki.modern` 是不同包名；用户先前卸载的旧 `.modern` 不恢复，不能把不同包名或不同证书当覆盖升级 |
+| 运行环境 | Ubuntu24.04 ARM64 + Node LTS + npm/pnpm + 官方 DSH；官方 UI/模型/插件/Skills 保留，PRoot 不是恶意代码沙箱 |
+| 登录/API Key | 用户本次明确恢复 DeepSeek 登录跳转排查；API Key 保存仍暂停，不调查/导出真实凭据。合成登录回调已测，真实 DeepSeek 账号登录未验收 |
+| 应用更新 | 固定仓库公开发布来源、同包/证书/更高 code、真实字节/SHA/SDK/APK 复验、缓存 FileProvider/用户确认；安装前阻止 DSH/组件/文件忙碌，见 [更新说明](APP-UPDATES.md) |
+| 环境保留 | 同包同签名覆盖 APK 不自动重装 Ubuntu/Node/DSH；不卸载、清数据、恢复旧快照、迁移签名。完整会话便携迁移仍有限制，见 [更新恢复](UPDATE-RECOVERY.md) |
+| 浏览器 | 默认授权当前工具连接；触摸先暂停，临时接管 30 秒无交互归还，显式撤销持久保留；后台本身不撤销。官方登录临时页不给 AI 读写/截图、不保存历史。完整截图/缩放/小窗实现保留 |
+| 测试设备 | 用户允许模拟器测试；每台开发机复用一个既有测试 AVD。本机 `Pixel_7_API_34_arm64` / `emulator-5572`，ARM64 API34，无本轮真实任务；不每任新建。首次误建的临时 AVD 已停用，不 wipe/删除数据 |
 
-## 验证与工程边界
+## 已实现、待验证与暂停
 
-DSH 修复轮结果见[TEST-REPORT](TEST-REPORT.md)：JVM 64 项通过；debug/release/AndroidTest 组装成功；双 lint 各 0 错误/49 警告/1 提示；19+12 项宿主回归通过，Git/双 APK/原生源码公开边界 0 发现。官方锁 686 个记录校验通过，宿主模拟三个 Node 版本各选中 560 个归档，非 Android 安装/测速。AndroidTest 仅编译，设备、真实任务与正式签名未验收。修复轮源码/归档/外部散列及独立目录检查已通过，历史数量不作当前文件数。
+### 已实现与已测
 
-此前发布咨询的标准 release 输出为 `com.tanuki.modern` 的 unsigned APK，不能凭同一路径当作可安装验证包；`artifacts/` 中已核验的 workspacecheck 双 APK 及原生附件不变。本次文档与清理后已重打源码包（260 条目/257 文件指纹），交接、公开边界、独立解压与源码/双 APK/原生外部散列检查通过；详情见本次交接。
+- 当前四项功能及 API 限流修复的源码/回归已接入；完整命令、失败修正、计数与设备边界见最新交接与 [TEST-REPORT](TEST-REPORT.md)。模拟器不等同真机，合成 callback 不等同真实账号登录。
+- 既有 DSH 解析优化保留：随包官方固定锁、已核对缓存复用，弱网请求重试/超时与进程组取消，未关闭 TLS/integrity 或把镜像当官方元数据来源。实现细节见 [组件](COMPONENTS.md)，此前验证见 [DSH 修复交接](handoffs/20261103-1051-dsh-resolution-cache.md)，不冒充本轮跑了首次安装/测速。
+- Git 前归档必要结论、清理过期交接、修复引用、重查实际暂存和源码 ZIP 的规则已固化于 `AGENTS.md` / [PUBLICATION](PUBLICATION.md)，不按日期盲删仍有效依据。前轮源码交付基线为 `c0680b4`。
 
-工程仅保留必要源码/测试/构建入口/许可及公共文档；此前构建/下载/生成JNI缓存与日志已清理。产物、日志、配置、凭据、JDK、含数据的AVD和并发暂存被Git排除；源码ZIP仅另含2个明确的原生对应源码附件。上传前检查实际暂存内容与公开归档，忽略规则不清理历史，自动扫描不是绝无隐私的证明。
+### 待验证 / 外部阻塞
 
-## 暂停与外部限制
+- 真实 DeepSeek 登录、真实模型任务、真机，以及完整 Ubuntu/Node/DSH 环境跨 APK 覆盖尚未本轮验收。
+- 用户发布本版清单后，仍需用同包同证书且更高版本的 APK 验证应用内「发现→下载→系统未知来源授权→确认安装」全链；无 Release 时不能造更新成功。
+- 正式密钥/签名迁移/生产发布未执行，正式产品不视为已验收；API Key 保存由用户暂停。
+- 弱网首次 DSH 安装性能、真实 Cookie/会话/加密备份跨设备迁移未验证，不用本机/`.build` 缓存冒充公共可重建证据。
 
-- 登录和API Key问题不在本轮范围，不继续调查或宣称修复。
-- Android设备、真实模型/微信登录、HyperOS、长期后台、全部更新/恢复及正式签名尚未本轮验收。
-- PRoot不是恶意代码沙箱；浏览器按用户选择授权，不绕过官方审批或静默改 `danger-full-access`。
+## 产物、Git 与下一步
 
-## 下一步
-
-1. 如需实际验收：明确专用设备与数据、确认没有安装/apt/dpkg/真实任务，再核对当前已装包名/证书和待安装 APK 的 target，获准后覆盖安装；不卸载/清数据。验证默认锁无需解析、失败重试复用、其他版本官方回退与真实弱网耗时，不能把宿主模拟当手机通过。
-2. 后续开发先建立新交接；每次 Git 提交/推送前清理已归档的过期交接、修复引用并明确暂存删除，随后刷新记录/状态/印章和源码 ZIP，不沿用旧散列。
-3. 设备验收须用户明确指定专用设备/数据且无安装或真实任务；不把Android编译当设备通过。
-4. 上传前设置公开昵称/隐私邮箱，运行 [上传检查](PUBLICATION.md) 并复查实际暂存；不自动提交或推送。
+- 本版交付目录为 `artifacts/releases/0.1.1/`，不是根目录旧 0.1.0 开发 APK；已生成本版 APK/更新清单/完整源码/原生对应源码与散列 6 个附件。源码 ZIP 随最终文档重打（280 条目/277 文件指纹），外部 SHA 与公开边界/独立解压结果见最新交接。
+- 本轮 Git 授权范围是源码 commit/push 至 `origin/main`，不包含创建 tag、上传二进制或发布 Release；最终提交/推送回执另行明确，不把打包当已发布。
+- 后续按 [发布步骤](RELEASE.md) 由用户上传同一 tag 的 APK、`app-update.json`、完整源码/原生对应源码与校验文件。遇签名/版本不兼容不卸载旧 App 绕过。
+- 下一任新建唯一交接，复用上述 AVD，先确认无安装/真实任务再测试；不要重启已暂停的 API Key 工作。必要专题入口见 [上手指南](AGENT-QUICKSTART.md)。

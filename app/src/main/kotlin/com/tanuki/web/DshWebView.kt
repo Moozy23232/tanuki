@@ -66,7 +66,9 @@ class DshWebView(private val activity: ComponentActivity, private val manager: R
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                 val url = request.url.toString()
                 if (OriginPolicy.sameOrigin(url, manager.origin)) return false
-                if (request.isForMainFrame && request.hasGesture() && OriginPolicy.sameOrigin(view.url.orEmpty(), manager.origin)) routePage(url)
+                // 官方账号会在异步初始化后跳转，只有固定授权入口可不依赖 Chromium 的瞬时手势标记。
+                if (request.isForMainFrame && (request.hasGesture() || DshOAuth.isAuthorization(url)) &&
+                    OriginPolicy.sameOrigin(view.url.orEmpty(), manager.origin)) routePage(url)
                 return true
             }
             override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
@@ -151,7 +153,11 @@ class DshWebView(private val activity: ComponentActivity, private val manager: R
                         WebResourceResponse("text/plain", "utf-8", 403, "Forwarded to browser", emptyMap(), ByteArrayInputStream(ByteArray(0)))
                 }
                 transport.webView = popup; message.sendToTarget()
-                popup.postDelayed({ dispose() }, 10_000)
+                // 官方先预开空白窗口，再等待最长 30 秒的 Host 初始化；避免弱网下提前销毁。
+                popup.webChromeClient = object : WebChromeClient() {
+                    override fun onCloseWindow(window: WebView) { dispose() }
+                }
+                popup.postDelayed({ dispose() }, DshOAuth.POPUP_WAIT_MILLIS)
                 return true
             }
             override fun onShowFileChooser(view: WebView, callback: ValueCallback<Array<Uri>>, params: FileChooserParams): Boolean {

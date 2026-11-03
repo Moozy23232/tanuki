@@ -76,7 +76,9 @@ data class TanukiUiModel(
     val npmSources: List<RuntimeSource> = emptyList(),
     val npmSpeed: SourceSpeedSnapshot = SourceSpeedSnapshot(),
     val transfers: List<FileTransferProgress> = emptyList(),
-    val liveLogs: kotlinx.coroutines.flow.StateFlow<List<String>>? = null
+    val liveLogs: kotlinx.coroutines.flow.StateFlow<List<String>>? = null,
+    val appUpdate: com.tanuki.update.AppUpdateState = com.tanuki.update.AppUpdateState(),
+    val appInstallAllowed: Boolean = false
 )
 
 data class TanukiUiCallbacks(
@@ -110,7 +112,11 @@ data class TanukiUiCallbacks(
     val cancelNpmSourceTests: () -> Unit = {},
     val openBrowser: () -> Unit = {},
     val revokeBrowser: () -> Unit = {},
-    val openBrowserOverlay: (() -> Unit)? = null
+    val openBrowserOverlay: (() -> Unit)? = null,
+    val checkAppUpdates: () -> Unit = {},
+    val downloadAppUpdate: () -> Unit = {},
+    val installAppUpdate: () -> Unit = {},
+    val cancelAppUpdate: () -> Unit = {}
 )
 
 internal val Snapshot.tanukiBusy: Boolean get() = operationActive
@@ -500,6 +506,7 @@ private fun SettingsPage(model: TanukiUiModel, c: TanukiUiCallbacks, section: St
     val s = model.snapshot
     if (section == null) {
         val categories = listOf(
+            "应用更新" to "Tanuki ${model.versionName} · 检查、下载与覆盖安装",
             "存储与空间" to "工作区容量、可用空间与目录占用",
             "项目与备份" to "文件导入、项目导出与私有快照",
             "组件维护与诊断" to "Ubuntu、Node.js、DSH 的版本与维护",
@@ -512,6 +519,11 @@ private fun SettingsPage(model: TanukiUiModel, c: TanukiUiCallbacks, section: St
                 if (index != categories.lastIndex) HorizontalDivider(Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant)
             } }
         }
+        return
+    }
+    if (section == "应用更新") {
+        ApplicationUpdateCard(model.appUpdate, model.versionName, model.appInstallAllowed,
+            c.checkAppUpdates, c.downloadAppUpdate, c.installAppUpdate, c.cancelAppUpdate)
         return
     }
     if (section == "组件维护与诊断") { EnvironmentSection(model, c); return }

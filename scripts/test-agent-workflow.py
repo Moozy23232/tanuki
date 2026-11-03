@@ -81,10 +81,10 @@ if args[0] == 'sign':
     pathlib.Path(args[args.index('--out') + 1]).write_bytes(b'synthetic-apk')
 ''', True)
         result = self.run_cmd("bash", "scripts/sign-release.sh", TANUKI_KEYSTORE=str(outside),
-                              TANUKI_STORE_PASSWORD="synthetic-password")
+                              TANUKI_STORE_PASSWORD="synthetic-password", TANUKI_VERSION_NAME="0.1.1", TANUKI_VERSION_CODE="2")
         self.assertEqual(0, result.returncode, result.stderr)
         events = [json.loads(line) for line in (self.root / "events.jsonl").read_text().splitlines()]
-        self.assertIn(["gradlew", "-PdevelopmentReleaseSigning=false", ":app:assembleModernRelease"], events)
+        self.assertIn(["gradlew", "-PdevelopmentReleaseSigning=false", "-PtanukiVersionName=0.1.1", "-PtanukiVersionCode=2", ":app:assembleModernRelease"], events)
 
     def test_clean_handoff_and_move_are_portable(self):
         self.handoff_fixture()

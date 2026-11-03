@@ -30,6 +30,8 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
@@ -59,6 +61,14 @@ fun AgentBrowserPage(controller: AgentBrowserController, modifier: Modifier = Mo
     onShowOverlay: (() -> Unit)? = null, onHideOverlay: () -> Unit = {}, openRequest: Int = 0,
     fullscreen: Boolean = false, onFullscreen: (Boolean) -> Unit = {}) {
     val state by controller.state.collectAsState()
+    val interactionModifier = modifier.pointerInput(controller) {
+        awaitPointerEventScope {
+            while (true) {
+                val event = awaitPointerEvent(PointerEventPass.Initial)
+                if (event.changes.any { it.pressed || it.previousPressed }) controller.noteHumanInteraction()
+            }
+        }
+    }
     val library by controller.library.state.collectAsState()
     var address by rememberSaveable { mutableStateOf(state.url) }
     var menu by remember { mutableStateOf<String?>(null) }
@@ -111,12 +121,12 @@ fun AgentBrowserPage(controller: AgentBrowserController, modifier: Modifier = Mo
     BackHandler(enabled = fullscreen || screen != null || showFind || (state.canGoBack && !state.closed)) {
         when { fullscreen -> onFullscreen(false); screen != null -> back(); showFind -> { showFind = false; controller.clearFind() }; else -> controller.back() }
     }
-    if (screen == null) Surface(modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
+    if (screen == null) Surface(interactionModifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
         Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize().imePadding()) {
             if (!fullscreen) Row(Modifier.fillMaxWidth().zIndex(1f).padding(horizontal = 12.dp, vertical = 6.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                OutlinedTextField(address, { address = it.take(8192) }, Modifier.weight(1f).focusRequester(addressFocus)
+                OutlinedTextField(address, { controller.noteHumanInteraction(); address = it.take(8192) }, Modifier.weight(1f).focusRequester(addressFocus)
                     .semantics { contentDescription = "网址输入框" }, label = { Text("搜索或输入网址", maxLines = 1, overflow = TextOverflow.Ellipsis) },
                     placeholder = { Text("${BrowserSearchEngine.from(library.searchEngine).title}搜索 / example.com", maxLines = 1, overflow = TextOverflow.Ellipsis) },
                     singleLine = true, enabled = !state.closed && !state.rendererFailed,
@@ -126,7 +136,7 @@ fun AgentBrowserPage(controller: AgentBrowserController, modifier: Modifier = Mo
                 IconButton(onClick = { focus.clearFocus(); keyboard?.hide(); onFullscreen(true) }) { TanukiIcon(TanukiGlyph.Expand, "浏览器进入全屏") }
             }
             if (showFind && !fullscreen) Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                OutlinedTextField(findText, { findText = it.take(200); controller.find(findText) }, Modifier.weight(1f).semantics { contentDescription = "页内查找输入框" }, singleLine = true,
+                OutlinedTextField(findText, { controller.noteHumanInteraction(); findText = it.take(200); controller.find(findText) }, Modifier.weight(1f).semantics { contentDescription = "页内查找输入框" }, singleLine = true,
                     label = { Text("页内查找") }, supportingText = { Text("${state.findIndex} / ${state.findCount}") })
                 IconButton(onClick = { controller.findNext(false) }, enabled = state.findCount > 0) { Icon(Icons.Default.KeyboardArrowUp, "上一个匹配") }
                 IconButton(onClick = { controller.findNext(true) }, enabled = state.findCount > 0) { Icon(Icons.Default.KeyboardArrowDown, "下一个匹配") }
@@ -173,10 +183,11 @@ fun AgentBrowserPage(controller: AgentBrowserController, modifier: Modifier = Mo
             }
             if (!fullscreen) Row(Modifier.fillMaxWidth().padding(start = 12.dp, end = 4.dp).heightIn(min = 36.dp), verticalAlignment = Alignment.CenterVertically) {
                 Icon(if (state.authorizedClient != null) Icons.Default.SmartToy else Icons.Default.Person, null, Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary)
-                Text(if (state.takeoverRequested) "AI 已暂停，等待你的选择" else if (state.authorizedClient != null) "AI 可操作 · 点网页可收回" else "你在操作 · AI 无权读取网页",
+                Text(if (state.takeoverRequested) "AI 已暂停，等待你的选择" else if (state.authorizedClient != null) "AI 可操作 · 点网页可临时接管"
+                    else state.idleReturnSeconds?.let { "你在操作 · ${it}秒未操作后交回 AI" } ?: "AI 权限已撤销 · 不自动恢复",
                     Modifier.weight(1f).padding(horizontal = 8.dp), style = MaterialTheme.typography.labelSmall)
                 TextButton(onClick = { if (state.authorizedClient != null) controller.takeControl() else controller.grantConnection() }, enabled = !state.closed && !state.rendererFailed) {
-                    Text(if (state.authorizedClient != null) "收回权限" else "交回 AI", style = MaterialTheme.typography.labelLarge)
+                    Text(if (state.authorizedClient != null) "撤销 AI 权限" else "交回 AI", style = MaterialTheme.typography.labelLarge)
                 }
             }
             if (!fullscreen) HorizontalDivider()
@@ -198,7 +209,7 @@ fun AgentBrowserPage(controller: AgentBrowserController, modifier: Modifier = Mo
             }
         }
         }
-    } else BrowserNativePage(screen!!, ::back, modifier, actions = {
+    } else BrowserNativePage(screen!!, ::back, interactionModifier, actions = {
         if (fullscreen) IconButton(onClick = { onFullscreen(false) }) { TanukiIcon(TanukiGlyph.Contract, "浏览器退出全屏") }
         if (screen == "页面总览") IconButton(onClick = { controller.newTab(); screen = null }, enabled = state.tabs.size < 12) { Icon(Icons.Default.Add, "新建页面") }
         if (screen == "历史记录" && library.history.isNotEmpty()) IconButton(onClick = { dialog = "清空历史记录" }) { Icon(Icons.Default.DeleteOutline, "清空记录") }
@@ -240,9 +251,9 @@ fun AgentBrowserPage(controller: AgentBrowserController, modifier: Modifier = Mo
             }
             "权限与后台" -> Column(Modifier.verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 Text(if (state.authorizedClient != null) "AI 可以操作浏览器" else "浏览器由你控制", style = MaterialTheme.typography.titleMedium)
-                Text("默认允许当前工具连接操作所有已打开页面。切到 DSH、小窗或后台仍有效；触碰网页会先暂停 AI，询问是否收回权限。")
-                FilledTonalButton(onClick = { if (state.authorizedClient != null) controller.takeControl() else controller.grantConnection() }) { Text(if (state.authorizedClient != null) "收回权限" else "交回 AI") }
-                Text("收回权限后会记住你的选择，不会因切页面或重启而自动交回。提交、付款、发布等业务操作仍需另外确认。", style = MaterialTheme.typography.bodySmall)
+                Text("默认允许当前工具连接操作所有已打开页面。触碰网页先暂停 AI；临时接管后，30 秒没有点击、滑动或输入会交回 AI。切页与后台不会另外撤销权限。")
+                FilledTonalButton(onClick = { if (state.authorizedClient != null) controller.takeControl() else controller.grantConnection() }) { Text(if (state.authorizedClient != null) "撤销 AI 权限" else "交回 AI") }
+                Text("显式撤销会记住你的选择，不因空闲、切页或重启自动交回。提交、付款、发布等业务操作仍需另外确认。", style = MaterialTheme.typography.bodySmall)
                 HorizontalDivider()
                 Text(if (state.backgroundEnabled) "后台运行已开启" else "后台运行已停止", style = MaterialTheme.typography.titleSmall)
                 Text("后台通知可收回 AI 权限或停止浏览器及下载，不会停止 DSH。Android 仍可能限制后台网络或回收进程。", style = MaterialTheme.typography.bodySmall)
@@ -261,7 +272,7 @@ fun AgentBrowserPage(controller: AgentBrowserController, modifier: Modifier = Mo
                 Text("连接权限不等于经过认证的单个模型或会话身份。只有持有本机连接能力的工具可以请求操作。", style = MaterialTheme.typography.bodySmall)
             }
             else -> {
-                OutlinedTextField(libraryQuery, { libraryQuery = it.take(200) }, Modifier.fillMaxWidth().padding(12.dp), label = { Text("筛选$screen") }, singleLine = true)
+                OutlinedTextField(libraryQuery, { controller.noteHumanInteraction(); libraryQuery = it.take(200) }, Modifier.fillMaxWidth().padding(12.dp), label = { Text("筛选$screen") }, singleLine = true)
                 LazyColumn(Modifier.weight(1f).padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     when (screen) {
                         "历史记录" -> {
@@ -322,8 +333,11 @@ fun AgentBrowserPage(controller: AgentBrowserController, modifier: Modifier = Mo
             }
         }) }
     if (state.takeoverRequested && state.overlayFrame == null) AlertDialog(onDismissRequest = { controller.resolveTakeover(false) }, title = { Text("收回 AI 浏览器权限？") },
-        text = { Text("AI 已暂停，这次点击尚未执行。收回后由你操作，AI 不能再读取或控制网页；也可以继续交给 AI。") },
-        confirmButton = { TextButton(onClick = { controller.resolveTakeover(true) }) { Text("收回权限") } },
+        text = { Column {
+            Text("AI 已暂停，这次点击尚未执行。临时接管期间 AI 不能读取或控制网页；30 秒未操作会自动交回。")
+            TextButton(onClick = controller::takeControl) { Text("撤销 AI 权限") }
+        } },
+        confirmButton = { TextButton(onClick = { controller.resolveTakeover(true) }) { Text("临时接管") } },
         dismissButton = { TextButton(onClick = { controller.resolveTakeover(false) }) { Text("继续交给 AI") } })
     state.downloadRequest?.takeIf { state.overlayFrame == null }?.let { request -> AlertDialog(onDismissRequest = controller::dismissDownload,
         title = { Text("下载此文件？") }, text = { Text("${request.name}\n${request.url.take(160)}\n\n保存到应用私有下载目录，可查看、导出或删除。单文件最多 256 MiB。") },
@@ -332,8 +346,8 @@ fun AgentBrowserPage(controller: AgentBrowserController, modifier: Modifier = Mo
     dialog?.let { title -> AlertDialog(onDismissRequest = { dialog = null }, title = { Text(if (title.startsWith("删除下载:")) "删除下载文件？" else title) }, text = {
         when (title) {
             "收藏当前页" -> Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                OutlinedTextField(bookmarkTitle, { bookmarkTitle = it.take(200) }, label = { Text("收藏名称") })
-                OutlinedTextField(bookmarkFolder, { bookmarkFolder = it.take(80) }, label = { Text("收藏文件夹") }, supportingText = { Text("输入新名称即可建立收藏分类") })
+                OutlinedTextField(bookmarkTitle, { controller.noteHumanInteraction(); bookmarkTitle = it.take(200) }, label = { Text("收藏名称") })
+                OutlinedTextField(bookmarkFolder, { controller.noteHumanInteraction(); bookmarkFolder = it.take(80) }, label = { Text("收藏文件夹") }, supportingText = { Text("输入新名称即可建立收藏分类") })
             }
             "搜索引擎" -> Column { BrowserSearchEngine.entries.forEach { engine -> Row(Modifier.fillMaxWidth().clickable { controller.library.setSearchEngine(engine) }.heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
                 RadioButton(library.searchEngine == engine.name, onClick = { controller.library.setSearchEngine(engine) }); Text(engine.title)

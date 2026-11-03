@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """按明确的公开源码清单打包可重建工程。"""
 from pathlib import Path
+import argparse
 import hashlib
+import re
 import zipfile
 
 ROOT = Path(__file__).resolve().parent.parent
-NAME = "Tanuki-0.1.0-dev"
+NAME = "Tanuki-0.1.1"
 OUTPUT = ROOT / "artifacts" / f"{NAME}-source.zip"
 FILES = (
     ".gitignore", "AGENTS.md", "LICENSE", "README.md", "THIRD_PARTY_NOTICES",
@@ -55,7 +57,12 @@ def public_file(path: Path) -> bool:
     return path.is_file()
 
 
-def main() -> None:
+def main(version=None) -> None:
+    # 导入本模块做公共指纹时仍保留默认常量；只有显式发布调用才改变归档名称。
+    if version is not None and (len(version) > 80 or not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z]+(?:[.-][0-9A-Za-z]+)*)?", version)):
+        raise ValueError("Invalid confirmed source version")
+    archive_name = f"Tanuki-{version}" if version is not None else NAME
+    output = ROOT / "artifacts" / f"{archive_name}-source.zip"
     selected = set()
     for name in FILES:
         path = ROOT / name
@@ -75,28 +82,30 @@ def main() -> None:
         if not all(path.is_file() and public_file(path) for path in extras):
             raise FileNotFoundError("Incomplete native source attachments; run scripts/package-native-sources.sh")
         selected.update(extras)
-    OUTPUT.parent.mkdir(exist_ok=True)
-    with zipfile.ZipFile(OUTPUT, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
+    output.parent.mkdir(exist_ok=True)
+    with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
         for path in sorted(selected):
             relative = path.relative_to(ROOT)
-            info = zipfile.ZipInfo(f"{NAME}/{relative.as_posix()}", date_time=(1980, 1, 1, 0, 0, 0))
+            info = zipfile.ZipInfo(f"{archive_name}/{relative.as_posix()}", date_time=(1980, 1, 1, 0, 0, 0))
             info.create_system = 3
             executable = path.name == "gradlew" or path.suffix in {".sh", ".py", ".mjs"}
             info.external_attr = (0o100755 if executable else 0o100644) << 16
             archive.writestr(info, path.read_bytes(), compress_type=zipfile.ZIP_DEFLATED, compresslevel=9)
     hasher = hashlib.sha256()
-    with OUTPUT.open("rb") as stream:
+    with output.open("rb") as stream:
         for chunk in iter(lambda: stream.read(1024 * 1024), b""):
             hasher.update(chunk)
     digest = hasher.hexdigest()
-    checksum = OUTPUT.parent / "SOURCE-SHA256SUMS"
-    checksum.write_text(f"{digest}  {OUTPUT.name}\n")
-    print(f"source_files={len(selected)} bytes={OUTPUT.stat().st_size}")
+    checksum = output.parent / "SOURCE-SHA256SUMS"
+    checksum.write_text(f"{digest}  {output.name}\n")
+    print(f"source_files={len(selected)} bytes={output.stat().st_size}")
     print("native_sources=" + ("included" if all(path in selected for path in extras)
                                else "absent; prepare corresponding sources before distributing native binaries"))
-    print(f"archive={OUTPUT.relative_to(ROOT)}")
+    print(f"archive={output.relative_to(ROOT)}")
     print(f"sha256={digest}")
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--version", help="用户已确认的发布版本；日常检查不传")
+    main(parser.parse_args().version)

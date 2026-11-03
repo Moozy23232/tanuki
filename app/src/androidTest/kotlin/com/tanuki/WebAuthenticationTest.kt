@@ -93,7 +93,10 @@ class WebAuthenticationTest {
             ui { browser.view.evaluateJavascript(source) { result = it; latch.countDown() } }
             assertTrue(latch.await(5, TimeUnit.SECONDS)); return result
         }
-        suspend fun await(condition: () -> Boolean) = withTimeout(12000) { while (!condition()) delay(25) }
+        suspend fun await(message: String = "管理页连接", condition: () -> Boolean) {
+            try { withTimeout(20000) { while (!condition()) delay(25) } }
+            catch (_: TimeoutCancellationException) { fail("$message 超时；forwarded=${pages.size}; web=${manager.state.value.web}") }
+        }
         try {
             ui {
                 browser = DshWebView(activity, manager, { _, callback -> callback.onReceiveValue(null) }, { _, _ -> }, { file, _ -> file.delete() }, { pages.add(it) })
@@ -115,16 +118,25 @@ class WebAuthenticationTest {
                 val event = android.view.MotionEvent.obtain(now,time,action,x,y,0)
                 try { assertTrue(instrumentation.uiAutomation.injectInputEvent(event,true)) } finally { event.recycle() }
             }
-            await { pages.size == 1 }
+            await("普通外链") { pages.size == 1 }
             assertEquals(public.base + "/ordinary?code=public-oauth", pages[0])
             js("document.querySelector('#popup').click();true")
-            await { pages.size == 2 }
+            await("直接弹窗") { pages.size == 2 }
             assertEquals(public.base + "/popup?code=public-oauth", pages[1])
             js("setTimeout(()=>window.open('${public.base}/delayed?code=public-oauth','_blank'),20);true")
-            await { pages.size == 3 }
+            await("异步外链弹窗") { pages.size == 3 }
             assertEquals(public.base + "/delayed?code=public-oauth", pages[2])
             js("window.open('${server.origin}/?token=not-for-browser','_blank');true")
             delay(300); assertEquals("Never export DSH bootstrap links", 3, pages.size)
+            // 官方先预开空白弹窗、异步初始化后再赋值；13 秒超过旧弹窗存活上限。
+            val official = "https://platform.deepseek.com/dsh/authorize?client_id=synthetic-native-test"
+            js("window.oauthFixture=window.open('','_blank');setTimeout(()=>window.oauthFixture.location.assign('$official'),13000);true")
+            await("预开空白官方授权弹窗") { pages.size == 4 }
+            assertEquals(official, pages[3])
+            // 官方主框架也可能在异步完成后跳转，不依赖已经失效的用户手势标志。
+            js("setTimeout(()=>window.location.assign('$official'),20);true")
+            await("主框架异步官方授权") { pages.size == 5 }
+            assertEquals(official, pages[4])
             assertEquals(epoch, js("performance.timeOrigin"))
             assertEquals("No external content may load in the credential profile", 0, public.requests.get())
         } finally {

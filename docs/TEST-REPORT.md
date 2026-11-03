@@ -2,7 +2,30 @@
 
 Tanuki验证目标：`com.tanuki.modern.workspacecheck`，命名空间 `com.tanuki`，ARM64、minSdk26/targetSdk34。debug/release构建与证书、宿主与设备执行必须分别记录，源码中有测试不等于已运行。
 
-## 文档维护验证：提交前清理交接（2026-11-03）
+## v0.1.1 产品验证：登录、空闲权限与应用更新（2026-11-03）
+
+目标 `com.tanuki.modern.workspacecheck`、`versionName=0.1.1` / `versionCode=3`，开发证书。代码改动先加回归再实现；不是生产证书/真实登录/模型任务的正式验收。
+
+| 范围 | 本轮实际结果 | 限制 |
+|---|---|---|
+| JVM | **97 项通过，失败/错误/跳过 0** | OAuth 入口/一次票据、空闲/显式撤销、Feed/清单/数字与 URL、字节/文件链接/哈希/APK 身份等；不是设备系统安装链 |
+| modern debug 与 AndroidTest 构建 | 成功；明确核对包名、versionName/code、ARM64 和实际开发证书 | `-I scripts/workspace-verification.init.gradle -PtestBuildType=debug -PdevelopmentReleaseSigning=true`，无并行 flavor 构建 |
+| debug lint | **0 error，53 warnings，1 information** | 包含 UsableSpace25、RequiresFeature9、GradleDependency7、交互/可访问性等提示；未宣称全部既有或清零 |
+| 宿主脚本 | 发布准备 9、工作流12、公开边界回归19，均通过；签名 shell 语法通过 | 合成 badging/证书数据，不读取正式密钥 |
+| 复用模拟器 debug | `Pixel_7_API_34_arm64` / `emulator-5572`、ARM64 API34/WebView159，**6 类19 项最终全套通过** | `AgentBrowserControlTest`、`AppBrandingTest`、`ApplicationUpdateNativeTest`、`ApplicationUpdatePresentationTest`、`BrowserIntegrationTest`、`WebAuthenticationTest`；不是前轮14类54项全部重跑 |
+| 官方登录合成路径 | 官方平台授权、预开空白异步弹窗/主框架导航、一次性精确 callback、来源/端口/重放拒绝通过 | 未使用真实 DeepSeek 账号；管理 token/Cookie 不复制至网页或日志 |
+| 浏览器30秒 | 设备真实等待验证临时接管归还；交互复位/显式撤销不恢复等通过 | 后台本身不撤销；不改变进程级整页绘制设置 |
+| 实际点击更新检查 | 原生设置显示「暂无可用于应用内更新的 Release；发布时需附带 app-update.json」 | 公开 Atom/附件，**不调用 GitHub API/不需要 token**；无本版清单时不假装有更新 |
+| 原生覆盖文件基线 | 单独 Native 3 项通过，种合成私有文件；发布 APK 覆盖后加 `verifyUpgradeMarker=true` 读回原值并清理合成文件 | 未重新创建冒充保留；不是完整 Linux/真实用户数据覆盖测试 |
+| 版本更正前 0.1.2 non-debuggable 包/覆盖后回归 | 一键准备脚本成功，实际 APK 包名/0.1.2/3/SDK26/34/ARM64/开发证书核对；同一 AVD `adb install -r` 后 **6 类20项通过，104.346秒** | 发布目录真实 APK 被测试；没有生产签名/Release 上传，AndroidTest 与 debug 同证书 |
+
+最终用户更正为 v0.1.1 后重新执行 release/AndroidTest 构建、97 项 JVM 与 debug lint，结果仍如上表；`prepare-app-release.py --version 0.1.1 --version-code 3 --channel workspacecheck` 成功。覆盖前重新种合成私有文件，安装最终 0.1.1 APK 后加 `verifyUpgradeMarker=true` 跑同6类，**OK (20 tests)，113.154秒**，无失败/跳过/ADB断线，开发证书不变。发布打包另修正 ZIP 版本根目录与扁平目录原生 SHA 清单各一项，9 项宿主回归通过。
+
+首轮18项中合成 WebView 等待超时1项，及 UI fixture 未等异步回调/小窗遮挡，均保留为失败尝试；补阶段诊断、正确等待/关测试小窗后最终19项通过。原生测试曾引用错误字段/参数次序导致编译失败，修正后完整构建通过。没有把跳过或主机超时计为通过。当前真实账号、真机、完整 Linux 环境覆盖/弱网首次安装、未来更高 Release 系统授权安装链仍待验；API Key 保存继续暂停。
+
+命令、产物和数据边界见[本轮交接](handoffs/20261103-1316-login-app-update.md)、[应用内更新](APP-UPDATES.md)、[发布说明](RELEASE.md)。以下全部是前轮/历史范围，不计为本轮新跑。
+
+## 文档维护验证：提交前清理交接（2026-11-03，历史）
 
 - 仅修改工作规则、发布/接手文档和交接引用，清理 4 份已被替代的过程记录；未修改产品代码。
 - 新跑 `python3 scripts/test-publication.py` 19 项、`python3 scripts/test-agent-workflow.py` 12 项，均通过；本地 Markdown 链接检查通过。该检查不自动判定自然语言交接是否过期。
@@ -92,6 +115,6 @@ Git与源码边界扫描通过，249个Git候选、0索引、0发现；公开归
 - 全屏像素/系统栏/旋转/网页尾部/AI缩放/小窗须设备回归，不能只查DOM。
 - 真实模型/微信登录、HyperOS、长期后台、跨WebView/Android、16KB page-size、全部更新/恢复和正式签名未全面验收。
 - 快照仍拒绝超出既有白名单的绝对软链接，包括只读工具/下载挂载；未扩展该安全范围或实测相应场景。
-- 登录/API Key不列为已修复；跳过、超时、失败或ADB断开不计通过。
+- 当前登录跳转仅合成回归已验证，真实账号仍未验收；API Key 保存继续暂停。跳过、超时、失败或 ADB 断开不计通过。
 
 设备测试先确认专用数据、已装运行环境且无apt/dpkg/真实任务，按[上手指南](AGENT-QUICKSTART.md)明确选择设备。本轮不安装、不清数据、不迁移数据。

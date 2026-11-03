@@ -70,6 +70,10 @@ class AgentBrowserControlTest {
         assertEquals(canonical, controller.state.value.authorizedClient)
         touch(); ui { controller.resolveTakeover(true); controller.activateDefaultControl() }
         assertNull(controller.state.value.authorizedClient)
+        assertTrue(controller.library.state.value.aiControlEnabled)
+        assertNotNull(controller.state.value.idleReturnSeconds)
+        ui { controller.takeControl() }
+        assertNull(controller.state.value.idleReturnSeconds)
         assertFalse(controller.library.state.value.aiControlEnabled)
         ui {
             controller.close()
@@ -81,6 +85,28 @@ class AgentBrowserControlTest {
         ui { controller.grantConnection() }
         assertEquals(controller.connection.clientId, controller.state.value.authorizedClient)
         assertTrue(controller.library.state.value.aiControlEnabled)
+    }
+    @Test fun idleThirtySecondsReturnsTemporaryControlButNeverExplicitRevoke() {
+        ui {
+            controller.activateDefaultControl(); controller.setVisible(true)
+            val now = android.os.SystemClock.uptimeMillis()
+            for (action in listOf(MotionEvent.ACTION_DOWN, MotionEvent.ACTION_UP)) {
+                val event = MotionEvent.obtain(now, now, action, 1f, 1f, 0)
+                try { controller.webView.dispatchTouchEvent(event) } finally { event.recycle() }
+            }
+            controller.resolveTakeover(true); controller.setVisible(false)
+        }
+        assertNull(controller.state.value.authorizedClient)
+        assertNotNull(controller.state.value.idleReturnSeconds)
+        val deadline = android.os.SystemClock.elapsedRealtime() + 36_000
+        while (controller.state.value.authorizedClient == null && android.os.SystemClock.elapsedRealtime() < deadline) Thread.sleep(100)
+        assertEquals(controller.connection.clientId, controller.state.value.authorizedClient)
+        ui { controller.takeControl() }
+        // 真正等待超过 30 秒，确认显式撤销不会被默认恢复策略覆盖。
+        Thread.sleep(31_000)
+        assertNull(controller.state.value.authorizedClient)
+        assertNull(controller.state.value.idleReturnSeconds)
+        assertFalse(controller.library.state.value.aiControlEnabled)
     }
     @Test fun authenticationOriginAndEndpointAreStrict() {
         assertEquals("unauthorized", code(rpc("status", token = "incorrect")))

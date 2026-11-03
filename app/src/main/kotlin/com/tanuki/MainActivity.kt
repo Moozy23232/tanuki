@@ -52,6 +52,7 @@ import java.util.zip.ZipOutputStream
 class MainActivity : ComponentActivity() {
     private val manager get() = (application as TanukiApp).runtime
     private val updates get() = (application as TanukiApp).updates
+    private val appUpdates get() = (application as TanukiApp).appUpdates
     private lateinit var browser: DshWebView
     private val dshWindowMode by lazy { com.tanuki.ui.DshWindowMode(window) }
     private var agentBrowser: AgentBrowserController? = null
@@ -168,6 +169,7 @@ class MainActivity : ComponentActivity() {
                 val npmSources=remember(npmSelection.version) { manager.npmSources.sources(npmSelection.version) }
                 val tools by manager.requiredTools.collectAsState()
                 val transfers by manager.fileTransfers.state.collectAsState()
+                val appUpdate by appUpdates.state.collectAsState()
                 val nodeRequirement=remember(s.dsh,components.dshInstalled) { manager.components.dshNodeRequirement(s.dsh).orEmpty() }
                 val ubuntuSources=remember(components.selectedUbuntuVersion) { manager.components.sources(RuntimeComponent.UBUNTU) }
                 val nodeSources=remember(components.selectedNodeVersion) { manager.components.sources(RuntimeComponent.NODE) }
@@ -210,7 +212,8 @@ class MainActivity : ComponentActivity() {
                         backgroundResult, legacyShim, blobExport, BuildConfig.VERSION_NAME, freeBytes,liveLogs=manager.log.recent,
                         components=components,ubuntuSources=ubuntuSources,nodeSources=nodeSources,
                         ubuntuSpeed=ubuntuSpeed,nodeSpeed=nodeSpeed,nodeRequirement=nodeRequirement,workspaceStorage=workspaceStorage,
-                        tools=tools,npmSelection=npmSelection,npmSources=npmSources,npmSpeed=npmSpeed,transfers=transfers),
+                        tools=tools,npmSelection=npmSelection,npmSources=npmSources,npmSpeed=npmSpeed,transfers=transfers,
+                        appUpdate=appUpdate,appInstallAllowed=appUpdates.installAllowed()),
                     callbacks = TanukiUiCallbacks(
                         command = { command ->
                             when (command) {
@@ -273,7 +276,11 @@ class MainActivity : ComponentActivity() {
                             (application as TanukiApp).startBrowserBackground()
                         },
                         revokeBrowser = { agentBrowser?.takeControl() },
-                        openBrowserOverlay = ::requestBrowserOverlay
+                        openBrowserOverlay = ::requestBrowserOverlay,
+                        checkAppUpdates = appUpdates::check,
+                        downloadAppUpdate = appUpdates::download,
+                        installAppUpdate = ::confirmApplicationUpdate,
+                        cancelAppUpdate = appUpdates::cancel
                     ),
                     browserView = browser.view,
                     browserOpenRequest = browserOpenRequest,
@@ -456,7 +463,14 @@ class MainActivity : ComponentActivity() {
     private fun openDshPage(url: String) {
         if (!OriginPolicy.browserPage(url, manager.origin)) return
         val controller = agentBrowser
-        if (controller == null || controller.newTab(url) == null) {
+        val runtime = manager
+        val opened = if (controller == null) false else if (com.tanuki.web.DshOAuth.isAuthorization(url)) {
+            val origin = runtime.origin; val identity = runtime.authenticatedUrl
+            origin != null && identity != null && controller.openDshAuthorization(url, origin, identity) {
+                runtime.origin to runtime.authenticatedUrl
+            }
+        } else controller.newTab(url) != null
+        if (!opened) {
             android.widget.Toast.makeText(this, controller?.state?.value?.notice ?: browserUnavailable ?: "浏览器暂不可用，请先检查 WebView", android.widget.Toast.LENGTH_LONG).show()
             return
         }
@@ -483,6 +497,32 @@ class MainActivity : ComponentActivity() {
         }
     }
     override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); setIntent(intent); consumeBrowserIntent(intent) }
+    private fun confirmApplicationUpdate() {
+        if (!appUpdates.installAllowed()) {
+            android.widget.Toast.makeText(this, "请先停止 DSH，并等待环境与文件任务结束", android.widget.Toast.LENGTH_LONG).show()
+            return
+        }
+        if (android.os.Build.VERSION.SDK_INT >= 26 && !packageManager.canRequestPackageInstalls()) {
+            android.app.AlertDialog.Builder(this).setTitle("允许安装 Tanuki 更新")
+                .setMessage("需要在系统设置中允许此应用安装更新。授权后请返回应用，再次点击安装；不会自动安装或清除数据。")
+                .setNegativeButton("取消", null).setPositiveButton("前往设置") { _, _ ->
+                    runCatching { startActivity(Intent(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:$packageName"))) }
+                        .onFailure { appUpdates.installerFailed() }
+                }.show()
+            return
+        }
+        android.app.AlertDialog.Builder(this).setTitle("覆盖更新 Tanuki？")
+            .setMessage("已核对同包名、同签名和更高版本。Ubuntu、Node.js、DSH 与项目会保留；请勿卸载旧应用。下一步仍需在 Android 安装器中确认。")
+            .setNegativeButton("取消", null).setPositiveButton("继续安装") { _, _ ->
+                appUpdates.prepareInstall { uri ->
+                    if (!isFinishing && !isDestroyed) runCatching {
+                        check(appUpdates.installAllowed())
+                        startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(uri, "application/vnd.android.package-archive")
+                            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
+                    }.onFailure { appUpdates.installerFailed() }
+                }
+            }.show()
+    }
     private fun openAppSettings() { startActivity(Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName"))) }
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)

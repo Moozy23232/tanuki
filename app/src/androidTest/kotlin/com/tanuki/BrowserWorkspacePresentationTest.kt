@@ -144,7 +144,9 @@ class BrowserWorkspacePresentationTest {
         touchPage(); find("收回 AI 浏览器权限？"); assertFalse(rpc(browser, "snapshot").getBoolean("ok"))
         screenshot("browser-touch-takeover.png"); click("继续交给 AI")
         assertTrue(rpc(browser, "snapshot").getBoolean("ok"))
-        touchPage(); click("收回权限"); assertFalse(browser.library.state.value.aiControlEnabled)
+        touchPage(); click("临时接管"); assertTrue(browser.library.state.value.aiControlEnabled)
+        assertNotNull(browser.state.value.idleReturnSeconds)
+        click("交回 AI"); click("撤销 AI 权限"); assertFalse(browser.library.state.value.aiControlEnabled)
         click("文件"); click("浏览器"); assertNull(browser.state.value.authorizedClient)
         click("交回 AI"); assertTrue(browser.library.state.value.aiControlEnabled)
         val view = browser.webView
@@ -177,7 +179,7 @@ class BrowserWorkspacePresentationTest {
     }
     @Test fun multiPageOverviewBookmarksAndHistoryUseNativeControls() = fixture { _, browser, server ->
         openPage(browser, server.base + "/")
-        if (browser.state.value.authorizedClient != null) click("收回权限")
+        if (browser.state.value.authorizedClient != null) click("撤销 AI 权限")
         val first = browser.state.value.activeTab; val view = browser.webView
         js(browser, "document.querySelector('#draft').value='tab one';true")
         click("页面总览"); click("新建页面"); await { browser.state.value.activeTab != first }; val second = browser.state.value.activeTab
@@ -247,7 +249,7 @@ class BrowserWorkspacePresentationTest {
     }
     @Test fun displayModesSearchFindZoomCaptureAndDownloadAreUsable() = fixture { _, browser, server ->
         openPage(browser, server.base + "/")
-        if (browser.state.value.authorizedClient != null) click("收回权限")
+        if (browser.state.value.authorizedClient != null) click("撤销 AI 权限")
         click("浏览器菜单"); screenshot("browser-menu-grouped.png"); click("浏览器设置"); screenshot("browser-settings-groups.png")
         click("通用"); click("搜索引擎"); click("DuckDuckGo"); click("完成")
         assertEquals("DUCKDUCKGO", browser.library.state.value.searchEngine)

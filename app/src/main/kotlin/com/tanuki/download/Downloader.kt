@@ -38,11 +38,14 @@ class DownloadLimitException : IllegalStateException("下载内容超过安全�
  * [ALLOWED_HOSTS], resumes only on a matching `Content-Range`, and commits nothing before the
  * length and digest checks pass.
  */
-class Downloader internal constructor(
+class Downloader private constructor(
     private val connection: (URL) -> HttpURLConnection,
     private val progress: (Long, Long) -> Unit,
+    private val allowedHosts: Set<String>,
 ) {
-    constructor(progress: (Long, Long) -> Unit) : this({ it.openConnection() as HttpURLConnection }, progress)
+    internal constructor(connection: (URL) -> HttpURLConnection, progress: (Long, Long) -> Unit) :
+        this(connection, progress, ALLOWED_HOSTS)
+    constructor(progress: (Long, Long) -> Unit) : this({ it.openConnection() as HttpURLConnection }, progress, ALLOWED_HOSTS)
 
     suspend fun fetch(url: String, target: File, sha256: String, expectedBytes: Long = -1): File {
         require(SHA256_HEX.matches(sha256)) { "SHA-256 校验值格式无效" }
@@ -202,7 +205,7 @@ class Downloader internal constructor(
         if (url.protocol != "https") throw IllegalStateException("下载源必须使用 HTTPS")
         if (url.userInfo != null) throw IllegalStateException("下载源不得包含凭据")
         val host = url.host?.lowercase()
-        if (host.isNullOrEmpty() || host !in ALLOWED_HOSTS) throw IllegalStateException("下载源不在允许列表：${host ?: "未知"}")
+        if (host.isNullOrEmpty() || host !in allowedHosts) throw IllegalStateException("下载源不在允许列表：${host ?: "未知"}")
         if (url.port != -1 && url.port != 443) throw IllegalStateException("下载源端口不受支持：$host")
         return url
     }
@@ -226,6 +229,10 @@ class Downloader internal constructor(
     private data class ResumePoint(val offset: Long, val validator: String?)
 
     companion object {
+        // 应用 APK 的来源与 Ubuntu/Node/npm 完全分离，不扩大既有运行环境下载边界。
+        internal fun applicationUpdates(connection: (URL) -> HttpURLConnection = { it.openConnection() as HttpURLConnection },
+                                        progress: (Long, Long) -> Unit): Downloader =
+            Downloader(connection, progress, setOf("github.com", "release-assets.githubusercontent.com", "objects.githubusercontent.com"))
         fun hash(file: File): String = digest(file, "SHA-256").joinToString("") { "%02x".format(it.toInt() and 0xff) }
     }
 }

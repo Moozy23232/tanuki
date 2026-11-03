@@ -11,6 +11,10 @@ import android.view.ViewGroup
 import android.webkit.*
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
+import com.tanuki.web.DshOAuth
+import com.tanuki.web.DshOAuthAttempt
+import com.tanuki.web.DshOAuthCallback
+import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -46,7 +50,8 @@ data class BrowserState(
     val zoomPercent: Int = 100, val findQuery: String = "", val findIndex: Int = 0, val findCount: Int = 0,
     val backgroundEnabled: Boolean = false, val downloadRequest: BrowserDownloadRequest? = null,
     val notice: String? = null, val pageMode: String = BrowserPageMode.WINDOWS.name, val takeoverRequested: Boolean = false,
-    val overlayFrame: BrowserOverlayFrame? = null, val overlayCollapsed: Boolean = false
+    val overlayFrame: BrowserOverlayFrame? = null, val overlayCollapsed: Boolean = false,
+    val idleReturnSeconds: Int? = null
 )
 data class BrowserVisit(val url: String, val title: String, val time: Long = System.currentTimeMillis())
 
@@ -93,6 +98,7 @@ internal class RpcFailure(val code: String) : Exception(code)
 class AgentBrowserController(private val context: Context, val library: BrowserLibrary = BrowserLibrary(context),
     private val privateOrigins: () -> Set<String> = { emptySet() }) {
     private val main = Handler(Looper.getMainLooper())
+    private val oauthScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val gate = BrowserPermissionGate()
     private val mutableState = MutableStateFlow(BrowserState(history = library.state.value.history))
     val state: StateFlow<BrowserState> = mutableState.asStateFlow()
@@ -104,6 +110,25 @@ class AgentBrowserController(private val context: Context, val library: BrowserL
     private var requestGeneration = 0L
     private var defaultPolicyApplied = false
     private var takeoverClient: String? = null
+    private val idleReturn = BrowserIdleReturnPolicy()
+    private var idleReturnClient: String? = null
+    private val idleReturnTick = object : Runnable {
+        override fun run() {
+            if (stopped.get() || rendererGone) return
+            val remaining = idleReturn.remaining(android.os.SystemClock.elapsedRealtime()) ?: return
+            val client = idleReturnClient ?: return
+            if (idleReturn.claim(android.os.SystemClock.elapsedRealtime(), library.state.value.aiControlEnabled)) {
+                takeoverClient = null
+                if (gate.grantProcessConnection(client)) {
+                    granted(client)
+                    update { copy(notice = "30 秒未操作，浏览器权限已交回 AI") }
+                }
+                return
+            }
+            update { copy(idleReturnSeconds = ((remaining + 999) / 1000).toInt()) }
+            main.postDelayed(this, 1000)
+        }
+    }
     private data class ActionPermit(val nonce: String, val ticket: BrowserPermissionGate.Ticket, val document: String, val expires: Long)
     private inner class ActionBridge {
         @JavascriptInterface fun consume(nonce: String): Boolean {
@@ -124,6 +149,10 @@ class AgentBrowserController(private val context: Context, val library: BrowserL
         var zoom = 100; var scale = 0f; var baseScale = 0f; var mode = BrowserPageMode.WINDOWS
         var query = ""; var match = 0; var matches = 0; var needsRestore = false
         var manualZoom = false; var fittingWidth = false; var fittedViewWidth = 0
+        @Volatile var oauthAttempt: DshOAuthAttempt? = null
+        var oauthIdentity: (() -> Pair<String?, String?>)? = null
+        var oauthJob: Job? = null
+        var privateLogin = false
     }
     private val tabs = mutableListOf<Tab>()
     private var selected = ""
@@ -175,7 +204,7 @@ class AgentBrowserController(private val context: Context, val library: BrowserL
     }
     /** Restored tabs are metadata until selected; never build twelve renderers at startup. */
     private fun createView(tab: Tab): WebView {
-        val view = WebView(context)
+        val view = InteractionWebView(context, ::directInput)
         tab.rendered = view
         WebViewCompat.setProfile(view, "tanuki-browser-v1")
         WebViewCompat.getProfile(view).cookieManager.setAcceptThirdPartyCookies(view, false)
@@ -198,12 +227,14 @@ class AgentBrowserController(private val context: Context, val library: BrowserL
             else update { copy(notice = "仅支持 HTTP/HTTPS 文件下载；此类链接请使用站点的普通下载入口") }
         }
         view.setOnTouchListener { _, event ->
+            noteHumanInteraction()
             if (event.actionMasked == android.view.MotionEvent.ACTION_POINTER_DOWN && !tab.fittingWidth) tab.manualZoom = true
             if (state.value.takeoverRequested) true
             else if (event.actionMasked == android.view.MotionEvent.ACTION_DOWN && state.value.authorizedClient != null) {
-                requestTakeover(); true // Do not forward the tap to links, forms or a running agent action.
+                requestTakeover(); true // 首次触碰只暂停 AI，不能把点击穿透给网页。
             } else false
         }
+        view.setOnKeyListener { _, _, event -> event.action == android.view.KeyEvent.ACTION_DOWN && !directInput() }
         view.setFindListener { active, count, done ->
             if (done) { tab.match = if (count == 0) 0 else active + 1; tab.matches = count; publishTabs() }
         }
@@ -219,7 +250,9 @@ class AgentBrowserController(private val context: Context, val library: BrowserL
             override fun onShowFileChooser(view: WebView?, callback: ValueCallback<Array<Uri>>?, params: FileChooserParams?): Boolean { callback?.onReceiveValue(null); return true }
             override fun onCreateWindow(view: WebView?, dialog: Boolean, gesture: Boolean, result: android.os.Message?): Boolean {
                 if (!gesture || result == null || tabs.size >= 12) return false
-                val next = createTab(); selectTab(next.id)
+                val next = createTab()
+                next.oauthAttempt = tab.oauthAttempt; next.oauthIdentity = tab.oauthIdentity; next.privateLogin = tab.privateLogin
+                selectTab(next.id)
                 (result.obj as? WebView.WebViewTransport)?.webView = next.view
                 result.sendToTarget(); return true
             }
@@ -233,10 +266,20 @@ class AgentBrowserController(private val context: Context, val library: BrowserL
                 tab.zoom = if (tab.baseScale > 0) (100 * newScale / tab.baseScale).roundToInt() else 100
                 publishTabs()
             }
-            override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean = blocked(request.url.toString())
+            override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean =
+                handleOAuthCallback(tab, request.url.toString(), request.method, request.isForMainFrame) || blocked(request.url.toString())
             @Deprecated("Legacy WebView callback")
             override fun shouldOverrideUrlLoading(view: WebView, url: String): Boolean = blocked(url)
-            override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? = if (allowed(request.url.toString())) null else deniedResource()
+            override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
+                val url = request.url.toString()
+                val attempt = tab.oauthAttempt
+                if (attempt != null && DshOAuth.isCallback(url, attempt.origin, request.method, request.isForMainFrame)) {
+                    // 某些 WebView 的重定向不经过 override；仍只把回调送回主线程的专用处理器。
+                    main.post { handleOAuthCallback(tab, url, request.method, request.isForMainFrame) }
+                    return deniedResource()
+                }
+                return if (allowed(url)) null else deniedResource()
+            }
             override fun onPageStarted(view: WebView, url: String?, favicon: Bitmap?) {
                 if (tab.id == selected) invalidateDocument()
                 if (url != null && !allowed(url)) { view.stopLoading(); tab.error = "已阻止此地址"; tab.loading = false; publishTabs(); return }
@@ -248,7 +291,10 @@ class AgentBrowserController(private val context: Context, val library: BrowserL
             override fun onPageFinished(view: WebView, url: String?) {
                 if (stopped.get() || tab !in tabs) return
                 tab.loading = false; tab.progress = 100
-                if (url != null && allowed(url)) { tab.url = url; library.visit(url, view.title.orEmpty()); update { copy(history = library.state.value.history) } }
+                if (url != null && allowed(url)) {
+                    tab.url = url
+                    if (!tab.privateLogin) { library.visit(url, view.title.orEmpty()); update { copy(history = library.state.value.history) } }
+                }
                 publishTabs(); saveTabs(); fitContentWidth(tab)
                 view.postDelayed({ fitContentWidth(tab) }, 150)
             }
@@ -261,7 +307,8 @@ class AgentBrowserController(private val context: Context, val library: BrowserL
             }
             override fun onReceivedSslError(view: WebView, handler: android.webkit.SslErrorHandler, error: android.net.http.SslError) { handler.cancel(); fail("证书验证失败，已停止加载") }
             override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
-                gate.revoke(); permit.set(null); requestGeneration++; invalidateDocument()
+                cancelIdleReturn(); gate.revoke(); permit.set(null); requestGeneration++; invalidateDocument()
+                tab.oauthJob?.cancel(); tab.oauthAttempt = null
                 tab.gone = true; tab.loading = false; tab.error = "此页面的渲染进程已停止，请关闭该页后新建页面"
                 (view.parent as? ViewGroup)?.removeView(view); view.destroy()
                 update { copy(authorizedClient = null, pendingClient = null, control = "授权已撤销") }; publishTabs(); return true
@@ -344,7 +391,50 @@ class AgentBrowserController(private val context: Context, val library: BrowserL
             activeTab = tab.id, tabs = this@AgentBrowserController.tabs.map { BrowserTabInfo(it.id, it.url, it.title, it.loading) },
             zoomPercent = tab.zoom, findQuery = tab.query, findIndex = tab.match, findCount = tab.matches, pageMode = tab.mode.name) }
     }
-    private fun saveTabs() { if (tabs.isNotEmpty()) library.saveTabs(tabs.map { SavedBrowserTab(it.id, it.url, it.title, it.mode.name) }, selected) }
+    private fun saveTabs() { if (tabs.isNotEmpty()) library.saveTabs(tabs.filterNot { it.privateLogin }.map { SavedBrowserTab(it.id, it.url, it.title, it.mode.name) }, selected) }
+
+    /** 仅原生管理页转交的官方入口能建立权限；普通地址栏和 Agent navigate 不能创建此票据。 */
+    fun openDshAuthorization(url: String, origin: String, launchIdentity: String,
+                             identity: () -> Pair<String?, String?>): Boolean {
+        uiThread()
+        if (stopped.get() || !DshOAuth.isAuthorization(url) || origin !in privateOrigins()) return false
+        val attempt = DshOAuthAttempt(url, origin, launchIdentity, android.os.SystemClock.elapsedRealtime())
+        if (!attempt.isCurrent(identity().first, identity().second, android.os.SystemClock.elapsedRealtime())) return false
+        if (newTab() == null) return false
+        current.privateLogin = true; current.oauthAttempt = attempt; current.oauthIdentity = identity
+        load(url)
+        return true
+    }
+
+    private fun handleOAuthCallback(tab: Tab, url: String, method: String, mainFrame: Boolean): Boolean {
+        val attempt = tab.oauthAttempt ?: return false
+        if (!DshOAuth.isCallback(url, attempt.origin, method, mainFrame)) return false
+        if (stopped.get() || tab !in tabs || tab.gone || tab.oauthJob?.isActive == true) return true
+        val identity = tab.oauthIdentity?.invoke() ?: return true
+        if (!attempt.claim(url, method, mainFrame, identity.first, identity.second, android.os.SystemClock.elapsedRealtime())) {
+            tab.error = "本次登录已过期或已处理，请回到 DSH 重新登录"; publishTabs(); return true
+        }
+        tab.loading = true; tab.error = null
+        update { copy(notice = "正在将授权回调交给 DSH 验证，请稍候") }; publishTabs()
+        tab.oauthJob = oauthScope.launch {
+            val completion = try { withContext(Dispatchers.IO) { DshOAuthCallback().exchange(url, attempt.origin) } }
+                catch (cancelled: CancellationException) { throw cancelled }
+                catch (_: Exception) { null }
+            if (stopped.get() || tab !in tabs || tab.gone || tab.oauthAttempt !== attempt) return@launch
+            val currentIdentity = tab.oauthIdentity?.invoke()
+            if (currentIdentity == null || !attempt.isCurrent(currentIdentity.first, currentIdentity.second, android.os.SystemClock.elapsedRealtime())) return@launch
+            tab.loading = false
+            if (completion != null) {
+                tab.view.loadUrl(completion)
+                update { copy(notice = "授权已返回 DSH；请回到 DSH 查看登录状态") }
+            } else {
+                tab.error = "DSH 未接受授权或网络中断，请回到 DSH 重新登录"
+                update { copy(notice = tab.error) }
+            }
+            publishTabs()
+        }
+        return true
+    }
     private fun restoreTab() {
         val tab = current
         if (tab.needsRestore && !tab.gone) { tab.needsRestore = false; if (allowed(tab.url)) tab.view.loadUrl(tab.url) }
@@ -365,6 +455,7 @@ class AgentBrowserController(private val context: Context, val library: BrowserL
         uiThread(); if (stopped.get()) return
         val tab = tabs.firstOrNull { it.id == id } ?: return
         if (selected == id) { permit.set(null); invalidateDocument() }
+        tab.oauthJob?.cancel(); tab.oauthAttempt = null
         tab.rendered?.let { view ->
             (view.parent as? ViewGroup)?.removeView(view)
             if (!tab.gone) { view.stopLoading(); view.destroy() }
@@ -428,13 +519,18 @@ class AgentBrowserController(private val context: Context, val library: BrowserL
         gate.revoke(); permit.set(null); invalidateDocument(); requestGeneration++
         takeoverClient = client
         update { copy(authorizedClient = null, pendingClient = null, takeoverRequested = true, control = "AI 已暂停，等待接管选择") }
+        if (library.state.value.aiControlEnabled) {
+            idleReturnClient = client; idleReturn.pause(android.os.SystemClock.elapsedRealtime()); idleReturnTick.run()
+        }
     }
     fun resolveTakeover(takeBack: Boolean) {
         uiThread(); val client = takeoverClient ?: return
         takeoverClient = null
         update { copy(takeoverRequested = false) }
-        if (takeBack) takeControl()
-        else if (!rendererGone && gate.grantProcessConnection(client)) granted(client)
+        if (takeBack) {
+            noteHumanInteraction()
+            update { copy(control = "你在临时操作，30 秒未操作后交回 AI") }
+        } else if (!rendererGone && gate.grantProcessConnection(client)) granted(client)
     }
     fun grant(clientId: String) {
         uiThread(); if (rendererGone || !gate.grant(clientId)) return
@@ -447,13 +543,14 @@ class AgentBrowserController(private val context: Context, val library: BrowserL
     }
     fun takeControl() { uiThread(); revoke(); library.setAiControlEnabled(false) }
     private fun granted(clientId: String) {
+        cancelIdleReturn(); takeoverClient = null
         requestGeneration++
-        update { copy(authorizedClient = clientId, pendingClient = null, takeoverRequested = false, control = "AI 可操作浏览器") }; log("当前连接获得浏览器权限")
+        update { copy(authorizedClient = clientId, pendingClient = null, takeoverRequested = false, idleReturnSeconds = null, control = "AI 可操作浏览器") }; log("当前连接获得浏览器权限")
         onBackgroundNeeded()
     }
     fun revoke() {
-        uiThread(); gate.revoke(); requestGeneration++; permit.set(null); invalidateDocument(); takeoverClient = null
-        update { copy(authorizedClient = null, pendingClient = null, takeoverRequested = false, control = "你在操作浏览器") }; log("用户收回浏览器权限")
+        uiThread(); cancelIdleReturn(); gate.revoke(); requestGeneration++; permit.set(null); invalidateDocument(); takeoverClient = null
+        update { copy(authorizedClient = null, pendingClient = null, takeoverRequested = false, idleReturnSeconds = null, control = "AI 权限已撤销，不自动恢复") }; log("用户收回浏览器权限")
     }
     private fun normalize(url: String): String {
         val value = url.trim()
@@ -466,7 +563,7 @@ class AgentBrowserController(private val context: Context, val library: BrowserL
         current.baseScale = 0f; current.zoom = 100; saveTabs()
         if (current.url.isNotBlank() && allowed(current.url)) { invalidateDocument(); webView.reload() }
     }
-    fun saveState(bundle: android.os.Bundle) { uiThread(); if (!stopped.get() && !rendererGone) webView.saveState(bundle); saveTabs() }
+    fun saveState(bundle: android.os.Bundle) { uiThread(); if (!stopped.get() && !rendererGone && !current.privateLogin) webView.saveState(bundle); saveTabs() }
     fun restoreState(bundle: android.os.Bundle) {
         uiThread(); if (stopped.get() || rendererGone || current.url.isNotEmpty()) return
         webView.restoreState(bundle)
@@ -521,9 +618,9 @@ class AgentBrowserController(private val context: Context, val library: BrowserL
     }
     fun close() {
         uiThread(); if (!stopped.compareAndSet(false, true)) return
-        gate.close(); requestGeneration++; permit.set(null); main.removeCallbacksAndMessages(null); invalidateDocument(); server.close()
+        cancelIdleReturn(); gate.close(); requestGeneration++; permit.set(null); main.removeCallbacksAndMessages(null); invalidateDocument(); server.close()
         synchronized(sockets) { sockets.forEach { runCatching { it.close() } }; sockets.clear() }
-        workers.shutdownNow(); deadline.shutdownNow(); saveTabs()
+        workers.shutdownNow(); deadline.shutdownNow(); oauthScope.cancel(); saveTabs()
         tabs.forEach { tab -> tab.rendered?.let { view ->
             (view.parent as? ViewGroup)?.removeView(view)
             if (!tab.gone) { view.stopLoading(); view.destroy() }
@@ -531,8 +628,22 @@ class AgentBrowserController(private val context: Context, val library: BrowserL
         backgroundHost = null; library.close()
         update { copy(closed = true, visible = false, authorizedClient = null, pendingClient = null, backgroundEnabled = false, overlayFrame = null, overlayCollapsed = false, control = "浏览器已关闭") }
     }
+    fun noteHumanInteraction() {
+        uiThread(); if (stopped.get()) return
+        idleReturn.interact(android.os.SystemClock.elapsedRealtime())
+        if (idleReturn.remaining(android.os.SystemClock.elapsedRealtime()) != null) update { copy(idleReturnSeconds = 30) }
+    }
+    private fun directInput(): Boolean {
+        uiThread(); if (stopped.get() || rendererGone) return false
+        noteHumanInteraction()
+        if (state.value.takeoverRequested) return false
+        if (state.value.authorizedClient != null) { requestTakeover(); return false }
+        return true
+    }
+    private fun cancelIdleReturn() { idleReturn.cancel(); idleReturnClient = null; main.removeCallbacks(idleReturnTick) }
     private fun manual(action: () -> Unit) {
         uiThread(); if (stopped.get() || rendererGone) return
+        noteHumanInteraction()
         try { action(); refresh() } catch (_: Exception) { failPage("操作未完成，请检查网页或重新打开") }
     }
     private fun uiThread() { check(Looper.myLooper() == Looper.getMainLooper()) { "Browser UI requires main thread" } }

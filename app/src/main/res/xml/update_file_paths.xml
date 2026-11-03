@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- 只向系统安装器临时共享已校验的更新缓存，不暴露整个 files/cache 目录。 -->
+    <cache-path name="application_updates" path="application-updates/" />
+</paths>

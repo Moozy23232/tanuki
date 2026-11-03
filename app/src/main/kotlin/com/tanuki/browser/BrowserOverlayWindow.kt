@@ -63,10 +63,12 @@ internal class BrowserOverlayWindow(
     private val root = object : FrameLayout(context) {
         override fun dispatchTouchEvent(event: MotionEvent): Boolean {
             if (event.actionMasked == MotionEvent.ACTION_OUTSIDE) { releaseFocus(); return false }
+            controller.noteHumanInteraction()
             if (event.actionMasked == MotionEvent.ACTION_DOWN) focusWindow(true)
             return super.dispatchTouchEvent(event)
         }
         override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+            controller.noteHumanInteraction()
             if (event.keyCode == KeyEvent.KEYCODE_BACK) {
                 if (event.action == KeyEvent.ACTION_UP) {
                     if (showingTabs) { showingTabs = false; render(controller.state.value) }
@@ -110,13 +112,18 @@ internal class BrowserOverlayWindow(
         imeOptions = EditorInfo.IME_ACTION_GO or EditorInfo.IME_FLAG_NO_EXTRACT_UI
         setPadding(dp(12), 0, dp(8), 0)
         setOnClickListener { requestAddressIme() }
+        addTextChangedListener(object : android.text.TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) { if (hasFocus()) controller.noteHumanInteraction() }
+            override fun afterTextChanged(s: android.text.Editable?) = Unit
+        })
         setOnEditorActionListener { _, action, event ->
             if (action == EditorInfo.IME_ACTION_GO || event?.let { it.keyCode == KeyEvent.KEYCODE_ENTER && it.action == KeyEvent.ACTION_UP } == true) { navigate(); true } else false
         }
     }
     private val statusRow = LinearLayout(context).apply { gravity = Gravity.CENTER_VERTICAL; setPadding(dp(12), 0, dp(4), 0) }
     private val status = label("", 12f).apply { maxLines = 2; ellipsize = TextUtils.TruncateAt.END }
-    private val controlButton = button("收回", "收回 AI 浏览器权限") {
+    private val controlButton = button("撤销", "撤销 AI 浏览器权限") {
         if (controller.state.value.authorizedClient != null) controller.takeControl() else controller.grantConnection()
     }
     private val progress = ProgressBar(context, null, android.R.attr.progressBarStyleHorizontal).apply { max = 100 }
@@ -275,11 +282,12 @@ internal class BrowserOverlayWindow(
         }
         status.text = when {
             state.takeoverRequested -> "AI 已暂停 · 等待接管选择"
-            state.authorizedClient != null -> "AI 可操作 · 点网页收回"
+            state.authorizedClient != null -> "AI 可操作 · 点网页临时接管"
+            state.idleReturnSeconds != null -> "你在操作 · ${state.idleReturnSeconds}秒未操作后交回 AI"
             else -> "你在操作 · AI 无权读取"
         }
-        controlButton.text = if (state.authorizedClient != null) "收回" else "交回"
-        controlButton.contentDescription = if (state.authorizedClient != null) "收回 AI 浏览器权限" else "交回 AI 浏览器权限"
+        controlButton.text = if (state.authorizedClient != null) "撤销" else "交回"
+        controlButton.contentDescription = if (state.authorizedClient != null) "撤销 AI 浏览器权限" else "交回 AI 浏览器权限"
         controlButton.isEnabled = !state.rendererFailed && !state.takeoverRequested
         back.isEnabled = state.canGoBack
         tabButton.text = "页面 ${state.tabs.size}"
@@ -329,8 +337,9 @@ internal class BrowserOverlayWindow(
         when {
             state.takeoverRequested -> {
                 text("收回 AI 浏览器权限？")
-                text("AI 已暂停，这次点击尚未执行。收回后由你操作，AI 不能读取或控制网页。")
-                action("收回权限") { controller.resolveTakeover(true) }
+                text("AI 已暂停，这次点击尚未执行。临时接管期间 AI 不能读取或控制网页；30 秒未操作会自动交回。")
+                action("临时接管") { controller.resolveTakeover(true) }
+                action("撤销 AI 权限") { controller.takeControl() }
                 action("继续交给 AI") { controller.resolveTakeover(false) }
             }
             state.downloadRequest != null -> {

@@ -40,7 +40,7 @@ printf 'sdk.dir=%s\n' "$ANDROID_SDK_ROOT" > local.properties
 
 ## 3. 第一次构建（不操作设备）
 
-无需JDK/SDK的宿主流程自测：`python3 scripts/test-agent-workflow.py`；上传过滤/脱敏回归为 `python3 scripts/test-publication.py`，发布前按 [上传检查](PUBLICATION.md) 检查候选文件。它只在临时目录使用模拟ADB/Gradle，验证交接过期检测、默认不操作设备、包名/target保护和失败/跳过/中断判定，不代表Android产品测试。
+无需JDK/SDK的宿主流程自测：`python3 scripts/test-agent-workflow.py`、发布清单/版本回归 `python3 scripts/test-app-release.py`；上传过滤/脱敏回归为 `python3 scripts/test-publication.py`，发布前按 [上传检查](PUBLICATION.md) 检查候选文件。它只在临时目录使用模拟ADB/Gradle，验证交接过期检测、默认不操作设备、包名/target保护和失败/跳过/中断判定，不代表Android产品测试。
 
 ```bash
 python3 scripts/check-handoff.py
@@ -69,7 +69,9 @@ source scripts/env.sh
 
 `scripts/build-debug.sh`、`scripts/install-and-launch.sh` 是标准包历史入口，后者硬编码启动 `.modern`；不要用它给当前用户保留的 `.workspacecheck` 安装/启动。非debuggable probe与正式release测试也不是此回归脚本的范围。
 
-## 4. 设备验证（必须显式同意）
+## 4. 设备验证（模拟器已获许可，真机另行确认）
+
+用户已允许用模拟器测试代码，**每台开发机优先复用同一个现有测试 ARM64 AVD，不得每任 Agent 都新建**。先列出现有 AVD、确认数据可测且无安装/真实任务；本开发机沿用 `Pixel_7_API_34_arm64`。记录启动后的明确 serial，不必反复询问是否可启动；只有没有可用测试 AVD 时才新建。不得 wipe、恢复旧快照、清空已有安装或覆盖未确认数据的 AVD。真机与真实账号仍需另外授权；模拟器结果不等于真机验收。首次专用 AVD 未装运行环境时，可先运行不依赖 Ubuntu/Node/DSH 的合成 WebView/浏览器/更新安全测试，环境相关用例仍需满足下列前置条件。
 
 先查看设备并确认是允许测试的数据集：
 
@@ -105,7 +107,8 @@ bash scripts/verify-workspace.sh \
 | 独立浏览器/工具RPC | `app/src/main/kotlin/com/tanuki/browser/AgentBrowserController.kt`、`BrowserIntegration.kt`、`BrowserLibrary.kt` |
 | 系统悬浮窗/后台 | `app/src/main/kotlin/com/tanuki/browser/BrowserService.kt`、`BrowserOverlayWindow.kt`、`BrowserOverlayGeometry.kt` |
 | 文件/软预算/模拟链接 | `app/src/main/kotlin/com/tanuki/storage/WorkspaceFileManager.kt`、`WorkspaceStorage.kt`、`L2sStore.kt` |
-| 快照/安全解包/更新 | `app/src/main/kotlin/com/tanuki/storage/DataSnapshots.kt`、`SafeTar.kt`、`update/UpdateManager.kt` |
+| 快照/安全解包/DSH 更新 | `app/src/main/kotlin/com/tanuki/storage/DataSnapshots.kt`、`SafeTar.kt`、`update/UpdateManager.kt` |
+| Tanuki APK 更新/版本打包 | `app/src/main/kotlin/com/tanuki/update/ApplicationUpdateManager.kt`、`AppReleaseManifest.kt`、`AppUpdatePolicy.kt`、`scripts/prepare-app-release.py`；见 [应用内更新](APP-UPDATES.md) / [发布](RELEASE.md) |
 | Android原生启动链 | `app/src/main/cpp/supervisor.c`、`runtime/build-native-runtime.sh`、`runtime/patches/proot-exitkill.patch` |
 | AI浏览器客户端/Skill | `app/src/main/assets/browser/tanuki-browser.mjs`、`app/src/main/assets/browser/SKILL.md` |
 | 测试 | `app/src/test/kotlin/com/tanuki/`、`app/src/androidTest/kotlin/com/tanuki/` |
@@ -126,6 +129,6 @@ bash scripts/verify-workspace.sh \
 
 1. 完成本次交接记录并更新 `AGENT-STATE.md`，诚实写明实际验证及未测范围。每次 Git 提交/推送前按 [上传检查](PUBLICATION.md) 先归档必要结论、删除已过期交接并修复引用；当前记录、模板和仍需使用的验证/未完成记录保留。
 2. `python3 scripts/check-handoff.py --record docs/handoffs/<本次记录>.md`，再不带参数检查。
-3. `python3 scripts/check-publication.py --git` 检查实际Git候选；`python3 scripts/package-source.py` 生成 `artifacts/Tanuki-0.1.0-dev-source.zip`，再检查ZIP内容、嵌套附件与 `artifacts/SOURCE-SHA256SUMS`。
+3. `python3 scripts/check-publication.py --git` 检查实际Git候选；`python3 scripts/package-source.py` 生成 `artifacts/Tanuki-0.1.1-source.zip`，再检查ZIP内容、嵌套附件与 `artifacts/SOURCE-SHA256SUMS`。
 4. APK有变化才更新其交付副本/校验并核对包名、签名和安装目标。仅文档/宿主脚本变化，不声称业务APK已重编译或设备测试全套重跑。
 5. 最终答复给清楚的产物路径、完成项、暂停/阻塞项和下一步，不留下只存在聊天里的必要信息。

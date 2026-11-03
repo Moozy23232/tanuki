@@ -7,6 +7,7 @@ class TanukiApp : Application() {
     lateinit var runtime: RuntimeManager
         private set
     val updates by lazy { com.tanuki.update.UpdateManager(runtime) }
+    val appUpdates by lazy { com.tanuki.update.ApplicationUpdateManager(this) }
     var browserController: com.tanuki.browser.AgentBrowserController? = null
         private set
     fun acquireBrowser(): com.tanuki.browser.AgentBrowserController {

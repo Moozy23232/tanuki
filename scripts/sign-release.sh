@@ -20,9 +20,19 @@ PY
 )"
 export TANUKI_KEY_PASSWORD="${TANUKI_KEY_PASSWORD:-$TANUKI_STORE_PASSWORD}"
 TANUKI_SIGNING_ALIAS="${TANUKI_SIGNING_ALIAS:-tanuki}"
-./gradlew -PdevelopmentReleaseSigning=false :app:assembleModernRelease
+: "${TANUKI_VERSION_NAME:?Ask the user to confirm the release version first}"
+: "${TANUKI_VERSION_CODE:?Provide a version code higher than every published build}"
+python3 - "$TANUKI_VERSION_NAME" "$TANUKI_VERSION_CODE" <<'PY'
+import re, sys
+version, code = sys.argv[1:]
+if (len(version) > 80 or not re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z]+(?:[.-][0-9A-Za-z]+)*)?', version)
+        or not re.fullmatch(r'[1-9][0-9]{0,9}', code) or not 2 <= int(code) <= 2_100_000_000):
+    print('Confirmed release version and increasing version code are required.', file=sys.stderr)
+    raise SystemExit(64)
+PY
+./gradlew -PdevelopmentReleaseSigning=false "-PtanukiVersionName=$TANUKI_VERSION_NAME" "-PtanukiVersionCode=$TANUKI_VERSION_CODE" :app:assembleModernRelease
 mkdir -p artifacts
-TANUKI_SIGNED_APK="$TANUKI_PROJECT/artifacts/Tanuki-0.1.0-dev-arm64-release.apk"
+TANUKI_SIGNED_APK="$TANUKI_PROJECT/artifacts/Tanuki-$TANUKI_VERSION_NAME-arm64-release.apk"
 "$TANUKI_SDK/build-tools/34.0.0/apksigner" sign --ks "$TANUKI_KEYSTORE" --ks-key-alias "$TANUKI_SIGNING_ALIAS" \
   --ks-pass env:TANUKI_STORE_PASSWORD --key-pass env:TANUKI_KEY_PASSWORD \
   --out "$TANUKI_SIGNED_APK" app/build/outputs/apk/modern/release/app-modern-release-unsigned.apk
