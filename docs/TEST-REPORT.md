@@ -2,7 +2,14 @@
 
 Tanuki验证目标：`com.tanuki.modern.workspacecheck`，命名空间 `com.tanuki`，ARM64、minSdk26/targetSdk34。debug/release构建与证书、宿主与设备执行必须分别记录，源码中有测试不等于已运行。
 
-## 本轮验证：DSH 解析与弱网恢复（2026-11-03）
+## 文档维护验证：提交前清理交接（2026-11-03）
+
+- 仅修改工作规则、发布/接手文档和交接引用，清理 4 份已被替代的过程记录；未修改产品代码。
+- 新跑 `python3 scripts/test-publication.py` 19 项、`python3 scripts/test-agent-workflow.py` 12 项，均通过；本地 Markdown 链接检查通过。该检查不自动判定自然语言交接是否过期。
+- 没有重跑 JVM、lint、AndroidTest 或设备任务；此前发布咨询已成功构建标准 modern unsigned APK（`com.tanuki.modern`、仅 ARM64、非 debuggable、未签名），不是本次清理的新构建，也不是可直接安装的正式包。
+- 保留以下修复轮与前轮的原始验证范围；交接印章/源码包最新校验结果见[当前状态](AGENT-STATE.md)。没有新的 Git 提交/推送、tag 或 Release。
+
+## 产品修复验证：DSH 解析与弱网恢复（2026-11-03）
 
 | 范围 | 实际结果 | 边界 |
 |---|---|---|
