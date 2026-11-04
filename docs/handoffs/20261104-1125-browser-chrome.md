@@ -1,47 +1,55 @@
-# 交接：紧凑浏览器与统一浮动导航
+# 交接：浏览器布局、浮动导航与标签入口
 
-- 时间：2026-11-04 11:25 CST开始；状态：用户授权按效果提交，布局已拆为两笔，标签改动待实施，未推送。
-- 分支：`feat/browser-layout`，起点37dcedd。最初在旧工作区修改，用户要求后将全部未提交工作切到新分支；旧功能分支与远端仍一致。
-- 前一记录：[同步与精简](20261104-0949-rebase-liquid-main.md)。继续ponytail-lite，保持最小改动。
+- 时间：2026-11-04 11:25 CST开始，15时段收尾；状态：实现/专项验证完成，用户授权分效果提交，并追加授权普通推送本功能分支，结果以最终回执为准。
+- 分支：`feat/browser-layout`，起点37dcedd，旧功能分支未动。前一记录：[同步与精简](20261104-0949-rebase-liquid-main.md)。
 
 ## 用户目标与范围
 
-网址与浏览器标题同排，工具栏上移；追加要求所有页面浮动导航、缩小地址栏并首次聚焦全选。补充图片在微信受保护目录中，读取遭EPERM，未绕过权限；按文字和合成截图验证。
+网址与标题同排、工具栏上移；所有窄屏页面统一浮动导航，地址栏缩小并首次聚焦全选。追加要求按效果拆小commit，标签页改图标/角标且移除12页数量限制。前次微信目录图片受EPERM阻止；本次临时目录截图可读，未绕过任何权限。
 
 ## 当前状态
 
-本轮追加：先拆「紧凑浏览器/地址栏」「各页浮动导航」两笔，再改标签图标/角标及取消12页数量限制。拆分期间只在根工作区暂移第二笔差异，公开源码已按SHA备份到忽略目录；不创建worktree。第一笔为e724ef5，第二笔恢复后全部产品/测试源码与之前15项通过版本逐字节相同，标签改动待实施。旧交接仍有独有验证事实，未无理由删除。
-
-当前两笔合并后的已验证效果：窄屏各页统一浮动布局：原生首页/设置/文件使用背景模糊，DSH和浏览器用透明叠放，不录制WebView。原生列表末尾保留可滚动的避让空间，底部被IME占用时隐藏导航；宽屏侧栏和全屏规则保留。地址栏视觉缩薄、触摸范围保留，首次焦点全选，后续点击正常定位。
+布局与标签改动完成，按三个效果提交；用户已授权推送 `feat/browser-layout`。推送状态文字并入尚未发布的最后一笔，保留三笔结构。
 
 ## 本次改动
 
-- `AgentBrowserPage.kt`：紧凑地址输入、工具/权限条上移、原生列表尾部inset；标签移到输入框外层以保留文本选择无障碍语义。
-- `TanukiUi.kt`、`MainActivity.kt`、`WorkspaceFilesPage.kt`：共用浮动页面布局和末尾inset，文件列表/网格可滚到最后一项。
-- `GlassNavigationBar.kt`：网页场景透明底色，不抓取或重绘网页；原生玻璃路径不变。
-- 3份既有仪器测试：新增布局/透显与滚动尾部用例，扩充真实触摸全选、二次定位、DSH像素/生命周期断言；更新浏览器入口文档。
+1. e724ef5 `feat(browser): compact chrome and select address on focus`：AgentBrowserPage紧凑标题/地址栏、首焦全选/二次定位，MainActivity/TanukiUi接线，GlassNavigationBar网页透明底色及对应回归。
+2. 68d9487 `feat(ui): float navigation across workspace pages`：TanukiUi统一浮动布局，WorkspaceFilesPage列表/网格尾部避让、DSH占满视口；主活动接线和像素/滚动/WebView保留回归。
+3. `feat(browser): add tab badge and remove tab limit`：AgentBrowserPage用叠页图标与角标，真实计数保留在总览/无障碍说明，超过99仅视觉显示99+；AgentBrowserController与BrowserLibrary移除创建、弹窗和恢复时的12页截断。沿用现有懒创建，不扩展其他资源/权限边界。
+
+没有另建worktree。拆分前源码按SHA保存于忽略目录，第二笔恢复后产品/测试文件与原15项通过版本逐字节相同；旧交接含独有验证事实，未无理由删除。相关入口说明同步在BROWSER-WORKSPACE。
 
 ## 验证记录
 
-- 两笔分别执行 `:app:assembleModernDebug :app:assembleModernDebugAndroidTest` 通过；未重跑设备用例。以下为拆分前组合验证，不能冒充本次新测。
-- 实际Gradle任务：modern/compat debug、modern AndroidTest、97 JVM通过；modern lint0错误/71警告/1提示。使用独立init（公开workspace验证脚本仅改debug后缀为 `.uipolish.workspacecheck`）。
-- 核验package/target后，`Tanuki_UI_API36` / `emulator-5554` 独立合成包最终15项全过，无跳过/超时：BrowserWorkspacePresentationTest除既有系统栏用例外的5项，FilesBrowserPresentationTest全部5项，SetupPresentationTest的两个glass拖动、actualDshWebView、filesListExtends、setupGuideFirstStep共5项。逐项以 `am instrument -w -r -e class <类#方法>` 执行。
-- 验证包含网址同排/工具条位置、网页颜色透过导航、首次全选/二次光标、320dp暗色200%字体、文件真实编辑/复制、合成列表尾部触摸、多页/查找/缩放/截图/下载、授权/重建与WebView文档保留。
-- 新布局断言在旧代码先失败。首轮编译漏Column导入；后续下载用例的旧单向查找滚过目标，沿用已有双向显露模式后通过。`isImeVisible`需实验API，改用稳定IME inset；全选已绘制但输入节点contentDescription令无障碍范围为-1，将标签外置后真实范围断言通过。中间失败与重跑不累计通过数。
-- 正常Studio开发包另行构建、核对身份且未安装；设备仅保留独立预览包。前轮97 JVM/8 E2E不计本轮。
+- 推送收尾只更新交接文字，不改产品、不操作设备；本次重跑交接、源码打包/SHA、公开候选与暂存检查，产品测试沿用下述结果。
+
+- 两笔布局提交分别执行 `:app:assembleModernDebug :app:assembleModernDebugAndroidTest` 通过，没有把前轮设备结果冒充拆分后的重跑。
+- 标签改动后执行 `:app:assembleModernDebug :app:assembleCompatDebug :app:assembleModernDebugAndroidTest :app:testModernDebugUnitTest :app:lintModernDebug`：构建成功，97 JVM无失败/跳过，modern lint0错误/71警告/1提示。JDK17，独立init相对公开workspace验证脚本仅把debug后缀改为 `.uipolish.workspacecheck`。
+- 核验package/target与无运行任务后，`Tanuki_UI_API36` / `emulator-5554` 使用独立包逐项 `am instrument -w -r -e class <类#方法>`，最终11项无失败/跳过/超时：
+  - AgentBrowserControlTest：moreThanTwelveTabsCanBeCreatedByRpcAndRestored、authenticationOriginAndEndpointAreStrict、forbiddenUrlsAndStaleDocumentsFailWithoutNavigation。
+  - BrowserWorkspacePresentationTest：tabOverviewCanCreateBeyondTwelveWithAnAccessibleBadge、compactChromeSharesTitleRowAndWebPixelsShowBehindNavigation、multiPageOverviewBookmarksAndHistoryUseNativeControls。
+  - FilesBrowserPresentationTest：地址栏真实触摸/全选、320dp暗色200%字体、canonical授权/切页三项。
+  - SetupPresentationTest：actualDshWebView与filesListExtends两项，后者是合成滚动列表。
+- 新用例在旧12页限制上先失败，修正后RPC创建/恢复15页、原生总览继续新建、真实手势打开第15页、无手势弹窗仍拒绝均通过。中途新用例误点同名标题、用无障碍点击代替真实手势分别失败，改正确入口与既有MotionEvent模式后通过，没有放松产品断言。
+- 暗色截图改用临时空白标签并恢复原页，避免既有预览网页混入夹具；增加成功创建断言后另重跑此项通过。正常字号14角标和暗色200%截图已核对；原始截图不打包。
+- 测试APK留存后恢复正常Studio开发包输出并核验身份，未安装正常包；设备仅打开独立预览包。
+
+### 前轮范围（不累计本轮）
+
+组合布局双debug/AndroidTest、97 JVM与15项设备回归通过，lint同为0/71/1。涵盖真实文件编辑/复制、多页/查找/缩放/截图/下载、授权重建及WebView保留。旧布局回归先失败；曾修正漏Column导入、单向查找滚过下载目标、实验IME接口、输入节点标签屏蔽文本选择范围等问题。更早液态分支的8项也不计入本轮。
 
 ## 未完成与暂停项
 
-组合布局无待修项；当前待实施标签入口/数量限制改动。未测真机/低API/真实DSH模型任务/长期性能；未修复或重测主线已知退出全屏systemBars断言。API Key保存继续暂停。
+实现无待修项。未测真机/低API/真实DSH模型任务/大量标签内存压力；主线既有退出全屏systemBars断言未修复或重测。API Key保存继续暂停。
 
 ## 下一步
 
-按效果提交到新分支，不推送。新提供的临时目录截图已可读，用图标加数量角标替换方框数字；只移除标签数量限制，保留弹窗手势和协议/文件字节边界。
+仅普通推送 `feat/browser-layout`，不改main或旧功能分支；随后等待PR审阅。
 
 ## 约束与风险
 
-不改运行、登录、文件安全或浏览器授权，不改整页截图全局开关，不清数据/卸载/覆盖正常开发安装。网页透显不是网页背景截图或模糊；原生列表避让通过内容padding而非固定空白条。
+原生首页/文件/设置有背景模糊，DSH和浏览器只是透明叠放，不抓取/重绘WebView、不改整页绘制开关；列表末尾用可滚动padding，IME占底收起导航，宽屏侧栏与全屏规则保留。不设固定标签数量上限不代表无限内存；保留16 MiB元数据读取、URL/协议边界和弹窗手势门槛。不改登录/运行/文件安全，不清数据、卸载或覆盖正常开发安装。
 
 ## 产物与校验
 
-测试APK、合成截图及日志留 `.build`；正常Studio输出已恢复。收尾刷新本记录/印章、源码候选和外部SHA，正式发布目录不动；旧记录保留其不同验证依据，不再扩写重复报告。
+日志、测试APK与截图只留忽略目录；正常Studio输出恢复。每笔提交前检查交接印章、源码候选/外部SHA、Git候选与实际暂存内容；源码包以最后一次重新生成的 `artifacts/sources/Tanuki-0.1.3-source.zip` 为准。版本仍0.1.3/5，不动正式发布目录、tag、main或旧功能分支。

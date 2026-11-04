@@ -51,6 +51,20 @@ class AgentBrowserControlTest {
         ui { controller.grant(client) }
         assertEquals(client, controller.state.value.authorizedClient)
     }
+    @Test fun moreThanTwelveTabsCanBeCreatedByRpcAndRestored() {
+        grant()
+        repeat(14) { assertTrue("New tab must not have a fixed count limit", rpc("new_tab").getBoolean("ok")) }
+        ui {
+            val ids = controller.state.value.tabs.map { it.id }
+            val selected = controller.state.value.activeTab
+            val context = controller.webView.context
+            assertEquals(15, ids.size)
+            controller.close()
+            controller = AgentBrowserController(context) { setOf("http://127.0.0.1:34875") }
+            assertEquals(ids, controller.state.value.tabs.map { it.id })
+            assertEquals(selected, controller.state.value.activeTab)
+        }
+    }
     @Test fun defaultNativePolicyIsCanonicalTouchPausesAndTakebackPersists() {
         ui { controller.setVisible(false); controller.activateDefaultControl() }
         val canonical = controller.connection.clientId

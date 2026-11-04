@@ -240,8 +240,11 @@ class FilesBrowserPresentationTest {
         val activity = launch()
         val controller = MainActivity::class.java.getDeclaredField("agentBrowser").apply { isAccessible = true }
             .get(activity) as AgentBrowserController
+        val originalTab = controller.state.value.activeTab
+        var fixtureTab: String? = null
         try {
             ui {
+                fixtureTab = checkNotNull(controller.newTab())
                 val config = Configuration(activity.resources.configuration).apply {
                     uiMode = (uiMode and Configuration.UI_MODE_NIGHT_MASK.inv()) or Configuration.UI_MODE_NIGHT_YES
                 }
@@ -256,7 +259,7 @@ class FilesBrowserPresentationTest {
             screenshot("browser-address-dark-font200.png")
             tap("网址输入框")
             assertTrue(nodes().any { it.isEditable && it.isFocused })
-        } finally { ui { activity.finish() } }
+        } finally { ui { fixtureTab?.let(controller::closeTab); controller.selectTab(originalTab); activity.finish() } }
     }
     @Test fun fileControlsRemainReachableInDarkThemeAtTwoHundredPercent() {
         val folder = fixture()

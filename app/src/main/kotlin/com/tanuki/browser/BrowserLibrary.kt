@@ -52,7 +52,7 @@ class BrowserLibrary(context: Context, val transfers: FileTransfers = FileTransf
         check(!Files.isSymbolicLink(metadata.toPath()))
         if (!metadata.exists() || metadata.length() > 16 * 1024 * 1024) return@runCatching BrowserLibraryState()
         val json = JSONObject(AtomicFile(metadata).openRead().bufferedReader().use { it.readText() })
-        fun rows(key: String, max: Int): List<JSONObject> = json.optJSONArray(key)?.let { a ->
+        fun rows(key: String, max: Int = Int.MAX_VALUE): List<JSONObject> = json.optJSONArray(key)?.let { a ->
             (0 until minOf(max, a.length())).mapNotNull { a.optJSONObject(it) }
         }.orEmpty()
         BrowserLibraryState(
@@ -64,7 +64,7 @@ class BrowserLibrary(context: Context, val transfers: FileTransfers = FileTransf
                     if (status in setOf("等待中", "下载中")) "已中断" else status, row.optLong("received"), row.optLong("total", -1),
                     row.optLong("time"), if (status in setOf("等待中", "下载中")) "上次运行中断，请重新下载" else row.optString("error").ifBlank { null }, row.optBoolean("image"))
             },
-            tabs = rows("tabs", 12).map { SavedBrowserTab(it.getString("id"), it.optString("url"), it.optString("title"), BrowserPageMode.from(it.optString("mode")).name) },
+            tabs = rows("tabs").map { SavedBrowserTab(it.getString("id"), it.optString("url"), it.optString("title"), BrowserPageMode.from(it.optString("mode")).name) },
             selectedTab = json.optString("selectedTab").ifBlank { null }, searchEngine = BrowserSearchEngine.from(json.optString("searchEngine")).name,
             aiControlEnabled = json.optBoolean("aiControlEnabled", true))
     }.getOrElse { BrowserLibraryState() }

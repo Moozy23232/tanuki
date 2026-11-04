@@ -41,8 +41,10 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.input.ImeAction
@@ -176,9 +178,16 @@ fun AgentBrowserPage(controller: AgentBrowserController, modifier: Modifier = Mo
                 IconButton(onClick = controller::back, enabled = state.canGoBack) { Icon(Icons.Default.ArrowBack, "后退") }
                 IconButton(onClick = controller::forward, enabled = state.canGoForward) { Icon(Icons.Default.ArrowForward, "前进") }
                 IconButton(onClick = controller::reload, enabled = state.url.isNotEmpty()) { Icon(Icons.Default.Refresh, "刷新网页") }
-                OutlinedIconButton(onClick = { showPage("页面总览") }, shape = MaterialTheme.shapes.small,
-                    modifier = Modifier.semantics { contentDescription = "页面总览" }) {
-                    Text(state.tabs.size.toString(), style = MaterialTheme.typography.labelMedium, maxLines = 1)
+                Box(Modifier.size(48.dp)) {
+                    IconButton(onClick = { showPage("页面总览") }, modifier = Modifier.fillMaxSize().semantics {
+                        contentDescription = "页面总览"; stateDescription = "${state.tabs.size} 个页面"
+                    }) { Icon(Icons.Default.Tab, null) }
+                    // 角标放在按钮裁切外，放大字体时仍保留完整数量语义。
+                    Badge(Modifier.align(Alignment.TopEnd).clearAndSetSemantics {},
+                        containerColor = MaterialTheme.colorScheme.primaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer) {
+                        Text(if (state.tabs.size > 99) "99+" else state.tabs.size.toString(), maxLines = 1)
+                    }
                 }
                 IconButton(onClick = { focus.clearFocus(); keyboard?.hide(); onFullscreen(true) }) { TanukiIcon(TanukiGlyph.Expand, "浏览器进入全屏") }
                 IconButton(onClick = { menu = "main" }) { Icon(Icons.Default.Menu, "浏览器菜单") }
@@ -256,12 +265,12 @@ fun AgentBrowserPage(controller: AgentBrowserController, modifier: Modifier = Mo
     } else BrowserNativePage(screen!!, ::back, interactionModifier, actions = {
         if (onSettings != null) IconButton(onClick = onSettings) { TanukiIcon(TanukiGlyph.Settings, "设置") }
         if (fullscreen) IconButton(onClick = { onFullscreen(false) }) { TanukiIcon(TanukiGlyph.Contract, "浏览器退出全屏") }
-        if (screen == "页面总览") IconButton(onClick = { controller.newTab(); screen = null }, enabled = state.tabs.size < 12) { Icon(Icons.Default.Add, "新建页面") }
+        if (screen == "页面总览") IconButton(onClick = { controller.newTab(); screen = null }) { Icon(Icons.Default.Add, "新建页面") }
         if (screen == "历史记录" && library.history.isNotEmpty()) IconButton(onClick = { dialog = "清空历史记录" }) { Icon(Icons.Default.DeleteOutline, "清空记录") }
     }) {
         when (screen) {
             "页面总览" -> {
-                Text("${state.tabs.size} 个页面 · 最多 12 个", Modifier.padding(16.dp), style = MaterialTheme.typography.bodySmall)
+                Text("${state.tabs.size} 个页面", Modifier.padding(16.dp), style = MaterialTheme.typography.bodySmall)
                 LazyVerticalGrid(columns = GridCells.Adaptive(144.dp), modifier = Modifier.weight(1f).padding(horizontal = 12.dp),
                     contentPadding = PaddingValues(bottom = bottomInset + 12.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {

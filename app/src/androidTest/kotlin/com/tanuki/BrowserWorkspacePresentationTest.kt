@@ -225,6 +225,32 @@ class BrowserWorkspacePresentationTest {
         await { browser.state.value.authorizedClient == null }
         assertFalse(rpc(browser, "snapshot").getBoolean("ok"))
     }
+    @Test fun tabOverviewCanCreateBeyondTwelveWithAnAccessibleBadge() = fixture { _, browser, server ->
+        click("浏览器")
+        val count = maxOf(13, browser.state.value.tabs.size + 1)
+        ui { while (browser.state.value.tabs.size < count) assertNotNull(browser.newTab()) }
+        click("页面总览"); find("$count 个页面")
+        assertTrue(find("新建页面").isEnabled)
+        click("新建页面")
+        await { browser.state.value.tabs.size == count + 1 }
+        assertEquals("${count + 1} 个页面", androidx.core.view.accessibility.AccessibilityNodeInfoCompat.wrap(find("页面总览")).stateDescription?.toString())
+        screenshot("browser-tab-badge.png")
+        click("页面总览"); find("${count + 1} 个页面"); click("返回浏览器")
+        input(server.base + "/"); click("前往")
+        await { !browser.state.value.loading && browser.state.value.title == "Browser laboratory" }
+        if (browser.state.value.authorizedClient != null) click("撤销 AI 权限")
+        js(browser, "window.open('/second','_blank');true")
+        SystemClock.sleep(250)
+        assertEquals("Automatic popups stay blocked", count + 1, browser.state.value.tabs.size)
+        val link = Rect().also(find("Open second page")::getBoundsInScreen)
+        val down = SystemClock.uptimeMillis()
+        for (action in listOf(MotionEvent.ACTION_DOWN, MotionEvent.ACTION_UP)) {
+            val event = MotionEvent.obtain(down, SystemClock.uptimeMillis(), action, link.exactCenterX(), link.exactCenterY(), 0)
+            try { instrumentation.sendPointerSync(event) } finally { event.recycle() }
+            SystemClock.sleep(60)
+        }
+        await { browser.state.value.tabs.size == count + 2 && browser.state.value.url.endsWith("/second") }
+    }
     @Test fun multiPageOverviewBookmarksAndHistoryUseNativeControls() = fixture { _, browser, server ->
         openPage(browser, server.base + "/")
         if (browser.state.value.authorizedClient != null) click("撤销 AI 权限")

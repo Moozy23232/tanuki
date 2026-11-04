@@ -178,7 +178,7 @@ class AgentBrowserController(private val context: Context, val library: BrowserL
         connection = BrowserConnection(server.localPort, android.util.Base64.encodeToString(secret,
             android.util.Base64.NO_WRAP or android.util.Base64.URL_SAFE or android.util.Base64.NO_PADDING))
         val saved = library.state.value
-        for (entry in saved.tabs.take(12)) {
+        for (entry in saved.tabs) {
             val tab = createTab(entry.id.takeIf { it.matches(Regex("[a-f0-9-]{36}")) } ?: UUID.randomUUID().toString())
             tab.url = entry.url.takeIf { it.isEmpty() || allowed(it) }.orEmpty(); tab.title = entry.title.take(200)
             tab.needsRestore = tab.url.isNotEmpty(); tab.mode = BrowserPageMode.from(entry.mode)
@@ -199,10 +199,9 @@ class AgentBrowserController(private val context: Context, val library: BrowserL
         }, "browser-listener").apply { isDaemon = true; start() }
     }
     private fun createTab(id: String = UUID.randomUUID().toString()): Tab {
-        if (tabs.size >= 12) throw RpcFailure("tab_limit")
         return Tab(id).also { tabs += it }
     }
-    /** Restored tabs are metadata until selected; never build twelve renderers at startup. */
+    /** 恢复时只保留标签元数据，选中后才创建 WebView。 */
     private fun createView(tab: Tab): WebView {
         val view = InteractionWebView(context, ::directInput)
         tab.rendered = view
@@ -249,7 +248,7 @@ class AgentBrowserController(private val context: Context, val library: BrowserL
             override fun onGeolocationPermissionsShowPrompt(origin: String?, callback: GeolocationPermissions.Callback?) { callback?.invoke(origin, false, false) }
             override fun onShowFileChooser(view: WebView?, callback: ValueCallback<Array<Uri>>?, params: FileChooserParams?): Boolean { callback?.onReceiveValue(null); return true }
             override fun onCreateWindow(view: WebView?, dialog: Boolean, gesture: Boolean, result: android.os.Message?): Boolean {
-                if (!gesture || result == null || tabs.size >= 12) return false
+                if (!gesture || result == null) return false
                 val next = createTab()
                 next.oauthAttempt = tab.oauthAttempt; next.oauthIdentity = tab.oauthIdentity; next.privateLogin = tab.privateLogin
                 selectTab(next.id)
@@ -444,7 +443,7 @@ class AgentBrowserController(private val context: Context, val library: BrowserL
         return try {
             if (!url.isNullOrBlank() && !allowed(normalize(url))) throw RpcFailure("navigation_blocked")
             val tab = createTab(); selectTab(tab.id); if (!url.isNullOrBlank()) load(normalize(url)); saveTabs(); tab.id
-        } catch (_: RpcFailure) { update { copy(notice = if (tabs.size >= 12) "最多打开 12 个页面，请先关闭不需要的页面" else "无法打开此地址") }; null }
+        } catch (_: RpcFailure) { update { copy(notice = "无法打开此地址") }; null }
     }
     fun selectTab(id: String) {
         uiThread(); if (stopped.get() || tabs.none { it.id == id }) return
@@ -827,7 +826,7 @@ class AgentBrowserController(private val context: Context, val library: BrowserL
             "new_tab" -> {
                 val url = if (params.has("url")) text("url", 8192) else null
                 if (url != null && !allowed(url)) throw RpcFailure("navigation_blocked")
-                val id = newTab(url) ?: throw RpcFailure("tab_limit"); done(result.put("tabId", id))
+                val id = newTab(url) ?: throw RpcFailure("tab_creation_failed"); done(result.put("tabId", id))
             }
             "select_tab", "close_tab" -> {
                 val id = text("tabId", 64); if (tabs.none { it.id == id }) throw RpcFailure("tab_not_found")
