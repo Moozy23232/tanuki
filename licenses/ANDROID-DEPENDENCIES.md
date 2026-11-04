@@ -1,5 +1,7 @@
 # Android 运行依赖实际清单
 
+> 以下表格及同目录 `android-runtime-dependencies.json` 保留 main v0.1.3 的发布基线，并非液态玻璃分支当前清单。当前升级声明见 `THIRD_PARTY_NOTICES`，版本由 Gradle 配置/解析确定；正式发布前使用现有 inventory/collect 脚本重新生成。
+
 由 Gradle modernProbeRuntimeClasspath 实际解析结果生成，共 58 个 AAR/JAR。哈希对应构建缓存中的真实归档；许可证声明来自发布 POM，归档内可识别的 LICENSE / NOTICE 文本一同保留。此表不包含构建工具、测试库或手机首次下载的 Ubuntu / Node / DSH。完整法律审阅仍需核对缺失声明和上游要求。
 
 | 组件 | 发布 POM 的许可声明 | 归档 SHA-256 |

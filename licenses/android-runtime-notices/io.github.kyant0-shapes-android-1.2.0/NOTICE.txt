@@ -1,0 +1,7 @@
+Shapes Android 1.2.0 (io.github.kyant0:shapes-android:1.2.0)
+Copyright 2026 Kyant
+SPDX-License-Identifier: Apache-2.0
+Source: https://github.com/Kyant0/Shapes/tree/1.2.0
+Full license: ../../Apache-2.0.txt (source tree and packaged assets).
+
+Tanuki attribution (not an upstream NOTICE): unmodified dependency of Backdrop.

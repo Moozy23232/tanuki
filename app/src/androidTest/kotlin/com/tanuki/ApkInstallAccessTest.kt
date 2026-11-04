@@ -34,22 +34,23 @@ class ApkInstallAccessTest {
                 FileProvider.getUriForFile(app, "${app.packageName}.updates", second))
         } finally { ApkInstallAccess.revoke(app); first.delete(); second.delete() }
     }
-    private fun installerUid(intent: Intent): Int = app.packageManager.getActivityInfo(requireNotNull(intent.component), 0).applicationInfo.uid
+    private fun installerUid(intent: Intent): Int = requireNotNull(app.packageManager.getActivityInfo(requireNotNull(intent.component), 0).applicationInfo).uid
 
     @Test fun installerCanReadBeforeActivityStartsButMatchingUserAppCannot() = runBlocking {
         fixture { uri, _ ->
             val legacy = Intent(Intent.ACTION_VIEW).setDataAndType(uri, "application/vnd.android.package-archive").addFlags(read)
             val handlers = app.packageManager.queryIntentActivities(legacy, PackageManager.MATCH_DEFAULT_ONLY)
-            assertTrue("必须存在真正匹配APK的不同UID合成接收方", handlers.any { it.activityInfo.packageName == instrumentation.context.packageName })
+            assertTrue("必须存在真正匹配APK的不同UID合成接收方", handlers.any { it.activityInfo?.packageName == instrumentation.context.packageName })
             val intent = ApkInstallAccess.prepare(app, uri)
             val info = app.packageManager.getActivityInfo(requireNotNull(intent.component), 0)
-            assertTrue(info.applicationInfo.flags and (ApplicationInfo.FLAG_SYSTEM or ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0)
-            assertNotEquals(Process.myUid(), info.applicationInfo.uid)
+            val installerApp = requireNotNull(info.applicationInfo)
+            assertTrue(installerApp.flags and (ApplicationInfo.FLAG_SYSTEM or ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0)
+            assertNotEquals(Process.myUid(), installerApp.uid)
             assertEquals(uri, intent.data); assertEquals(uri, intent.clipData!!.getItemAt(0).uri)
             assertEquals(1, intent.clipData!!.itemCount)
             assertEquals(read, intent.flags and read)
             assertEquals(0, intent.flags and (Intent.FLAG_GRANT_WRITE_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION or Intent.FLAG_GRANT_PREFIX_URI_PERMISSION))
-            assertTrue("系统安装器在Activity开始前的预读已获授权", allowed(uri, info.applicationInfo.uid))
+            assertTrue("系统安装器在Activity开始前的预读已获授权", allowed(uri, installerApp.uid))
             val other = app.packageManager.getApplicationInfo(instrumentation.context.packageName, 0)
             assertNotEquals(Process.myUid(), other.uid)
             assertFalse("匹配相同MIME的普通应用不能获得显式预读权限", allowed(uri, other.uid))
@@ -58,7 +59,7 @@ class ApkInstallAccessTest {
                 app.packageManager.resolveContentProvider("${app.packageName}.updates", 0)!!.name,
                 app.packageManager.resolveContentProvider("${app.packageName}.browserfiles", 0)!!.name)
             ApkInstallAccess.revoke(app)
-            assertFalse("回收后安装器不能继续读取", allowed(uri, info.applicationInfo.uid))
+            assertFalse("回收后安装器不能继续读取", allowed(uri, installerApp.uid))
         }
     }
 

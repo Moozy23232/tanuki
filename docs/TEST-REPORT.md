@@ -2,6 +2,11 @@
 
 Tanuki验证目标：`com.tanuki.modern.workspacecheck`，命名空间 `com.tanuki`，ARM64、minSdk26/targetSdk34。debug/release构建与证书、宿主与设备执行必须分别记录，源码中有测试不等于已运行。
 
+## 液态玻璃分支验证（2026-11-03，整合 main 前）
+
+- Kotlin2.3.10/Compose1.10.3/Backdrop1.0.6 下，双debug/AndroidTest、97项JVM通过；双lint各0错误/70警告/1提示，31项宿主回归通过。API36隔离包的10项E2E通过，覆盖真实拖动/取消/RTL/键盘、大字体、原生采样对齐、WebView切页/全屏及设置/文件/更新界面。
+- 当时版本0.1.1/3，不代表本轮0.1.3/5重测；低API/真机/真实环境未验收。归档必要结论后移除重复过程交接，后续结果见[当前交接](handoffs/20261104-0949-rebase-liquid-main.md)。
+
 ## v0.1.3/5 安装器URI修复与发布包验证（2026-11-03）
 
 - 用户在「设置→应用更新」安装时报MIUI FileProvider未导出拒绝，要求修复推送后生成0.1.3。0.1.2/code4中间包已归档，最终版本0.1.3/code5，保持原workspacecheck包名/开发证书。

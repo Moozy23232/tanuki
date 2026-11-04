@@ -1,4 +1,4 @@
-plugins { id("com.android.application"); id("org.jetbrains.kotlin.android") }
+plugins { id("com.android.application"); id("org.jetbrains.kotlin.android"); id("org.jetbrains.kotlin.plugin.compose") }
 // 只有用户确认发布版本后才传入这两个参数；日常验证仍使用开发版，不隐式发布。
 val requestedVersion = providers.gradleProperty("tanukiVersionName").orNull
 val requestedCode = providers.gradleProperty("tanukiVersionCode").orNull
@@ -8,7 +8,7 @@ val configuredCode = requestedCode?.toIntOrNull()?.also { require(it in 1..2_100
 require(requestedCode == null || configuredCode != null) { "发布版本代码必须是正整数" }
 android {
     namespace = "com.tanuki"
-    compileSdk = 34
+    compileSdk = 36
     defaultConfig {
         applicationId = "com.tanuki"
         minSdk = 26
@@ -41,14 +41,13 @@ android {
         }
     }
     buildFeatures { compose = true; buildConfig = true }
-    composeOptions { kotlinCompilerExtensionVersion = "1.5.14" }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
-    kotlinOptions { jvmTarget = "17" }
     packaging { jniLibs { useLegacyPackaging = true; keepDebugSymbols += "**/*.so" } }
     lint { abortOnError = true }
 }
+kotlin { compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17) } }
 val noticesDirectory = layout.buildDirectory.dir("generated/notices")
-val syncNotices = tasks.register<Copy>("syncNotices") {
+val syncNotices = tasks.register<Sync>("syncNotices") {
     from(rootProject.file("THIRD_PARTY_NOTICES"))
     from(rootProject.file("LICENSE")) { into("licenses"); rename { "Tanuki-GPL-3.0.txt" } }
     from(rootProject.file("licenses/android-runtime-notices")) { into("licenses/android"); exclude("**/*.pom") }
@@ -66,9 +65,11 @@ tasks.matching { it.name == "preBuild" }.configureEach { dependsOn(syncNotices,n
 dependencies {
     implementation("androidx.webkit:webkit:1.10.0")
     implementation("androidx.activity:activity-compose:1.9.0")
-    implementation("androidx.compose.material3:material3:1.2.1")
-    implementation("androidx.compose.ui:ui:1.6.8")
-    implementation("dev.chrisbanes.haze:haze:0.7.3")
+    implementation(platform("androidx.compose:compose-bom:2026.02.00"))
+    implementation("androidx.compose.material3:material3")
+    implementation("androidx.compose.ui:ui")
+    implementation("androidx.compose.material:material-icons-core:1.7.8")
+    implementation("io.github.kyant0:backdrop:1.0.6")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
     implementation("org.apache.commons:commons-compress:1.27.1")

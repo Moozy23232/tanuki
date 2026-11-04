@@ -53,9 +53,8 @@ import com.tanuki.storage.WorkspaceStorageState
 import com.tanuki.update.Release
 import com.tanuki.web.WebViewSupport
 import com.tanuki.web.WebViewSupportState
-import dev.chrisbanes.haze.HazeDefaults
-import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.haze
+import com.kyant.backdrop.backdrops.layerBackdrop
+import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import java.util.Locale
 
 /** Presentation only. The host owns permissions, confirmations, jobs and WebView lifetime. */
@@ -172,12 +171,12 @@ fun TanukiUi(model: TanukiUiModel, callbacks: TanukiUiCallbacks, browserView: We
     }
     BackHandler(tab == 4) { settingsBack() }
     val destinations = TanukiDestination.entries.take(4)
-    val hazeState = remember { HazeState() }
+    val navigationBackdrop = rememberLayerBackdrop()
     val layoutDirection = LocalLayoutDirection.current
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val wide = maxWidth >= 840.dp
         // 只捕获原生滚动内容；网页保留原渲染链，旧系统使用高可读性的材质降级。
-        val nativeGlass = !wide && (tab == 0 || tab == 4) && Build.VERSION.SDK_INT >= 32
+        val nativeGlass = !wide && (tab == 0 || tab == 4) && Build.VERSION.SDK_INT >= 33
         Row(Modifier.fillMaxSize()) {
             if (wide && !activeFullscreen) NavigationRail(containerColor = Color.Transparent,
                 modifier = Modifier.fillMaxHeight().width(96.dp)) {
@@ -236,7 +235,7 @@ fun TanukiUi(model: TanukiUiModel, callbacks: TanukiUiCallbacks, browserView: We
                             selectedIndex = tab,
                             labels = destinations.map { it.title },
                             onSelect = ::navigate,
-                            hazeState = if (nativeGlass) hazeState else null,
+                            backdrop = if (nativeGlass) navigationBackdrop else null,
                         ) { index, tint ->
                             TanukiIcon(destinations[index].glyph, destinations[index].title, tint = tint)
                         }
@@ -254,18 +253,12 @@ fun TanukiUi(model: TanukiUiModel, callbacks: TanukiUiCallbacks, browserView: We
                     3 -> pageStates.SaveableStateProvider("browser") { agentBrowserPage(pageModifier, browserFullscreen, { browserFullscreen = it }) }
                     else -> key(tab, settingsSection.takeIf { tab == 4 }) {
                         // 原生内容可滚到玻璃后方，尾部仍预留导航高度，避免最后一项被遮挡。
-                        val nativeModifier = if (nativeGlass) Modifier.fillMaxSize().padding(
+                        // 先录制再加 inset，使图层与全局坐标使用同一原点，避免玻璃采到上方错位内容。
+                        val nativeModifier = if (nativeGlass) Modifier.fillMaxSize().layerBackdrop(navigationBackdrop).padding(
                             start = padding.calculateStartPadding(layoutDirection),
                             top = padding.calculateTopPadding(),
                             end = padding.calculateEndPadding(layoutDirection),
-                        ).consumeWindowInsets(padding).haze(
-                            hazeState,
-                            HazeDefaults.style(
-                                tint = MaterialTheme.colorScheme.surface.copy(alpha = 0.22f),
-                                blurRadius = 18.dp,
-                                noiseFactor = 0.035f,
-                            ),
-                        ) else pageModifier
+                        ).consumeWindowInsets(padding) else pageModifier
                         val bottomSpace = 32.dp + if (nativeGlass) padding.calculateBottomPadding() else 0.dp
                         Box(nativeModifier.background(tanukiPageBrush())) {
                             Column(Modifier.align(Alignment.TopCenter).widthIn(max = 760.dp).fillMaxSize().tanukiEnter().imePadding()

@@ -6,6 +6,8 @@ import android.graphics.Bitmap
 import android.graphics.Rect
 import android.os.SystemClock
 import android.view.ContextThemeWrapper
+import android.view.InputDevice
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.accessibility.AccessibilityNodeInfo
@@ -16,6 +18,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.MutableState
@@ -37,6 +40,8 @@ import androidx.compose.ui.unit.dp
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.webkit.WebSettingsCompat
 import androidx.webkit.WebViewFeature
+import com.kyant.backdrop.backdrops.layerBackdrop
+import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.tanuki.runtime.*
 import com.tanuki.storage.WorkspaceStorageState
 import com.tanuki.ui.GlassNavigationBar
@@ -50,9 +55,6 @@ import com.tanuki.update.Release
 import com.tanuki.web.DshWebView
 import com.tanuki.web.WebViewSupport
 import com.tanuki.web.WebViewSupportState
-import dev.chrisbanes.haze.HazeDefaults
-import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.haze
 import org.json.JSONObject
 import org.json.JSONTokener
 import org.junit.Assert.*
@@ -294,117 +296,350 @@ class SetupPresentationTest {
         return view
     }
 
-    @Test fun glassNavigationBlursPixelsAndKeepsTabsClickable() {
-        org.junit.Assume.assumeTrue("Hardware backdrop blur requires API 32+", android.os.Build.VERSION.SDK_INT >= 32)
-        val activity = launch(); cancelSourceTests()
-        val radius = mutableStateOf(1.dp)
-        val selected = mutableStateOf(0)
-        val useBackdrop = mutableStateOf(true)
-        val largeRtl = mutableStateOf(false)
-        val bounds = java.util.concurrent.atomic.AtomicReference<Rect>()
+    private class GlassFixture(backdrop: Boolean = true, rtl: Boolean = false, fontScale: Float = 1f) {
         val labels = listOf("工作台", "DSH", "文件", "浏览器")
+        val selected = mutableStateOf(0)
+        val selections = ArrayList<Int>()
+        val useBackdrop = mutableStateOf(backdrop)
+        val rtl = mutableStateOf(rtl)
+        val fontScale = mutableStateOf(fontScale)
+        val narrow = mutableStateOf(false)
+        val radius = mutableStateOf(16.dp)
+        val bounds = java.util.concurrent.atomic.AtomicReference<Rect>()
+    }
+
+    private fun mountGlassNavigation(activity: MainActivity, fixture: GlassFixture) {
         val glyphs = listOf(TanukiGlyph.Home, TanukiGlyph.Terminal, TanukiGlyph.Folder, TanukiGlyph.Browser)
-        var sharp: Bitmap? = null; var blurred: Bitmap? = null
-        try {
-            instrumentation.runOnMainSync {
-                activity.setContent {
-                    val density = activity.resources.displayMetrics.density
-                    CompositionLocalProvider(
-                        LocalDensity provides Density(density, if (largeRtl.value) 2f else 1f),
-                        LocalLayoutDirection provides if (largeRtl.value) LayoutDirection.Rtl else LayoutDirection.Ltr,
-                    ) {
+        instrumentation.runOnMainSync {
+            activity.setContent {
+                CompositionLocalProvider(
+                    LocalDensity provides Density(activity.resources.displayMetrics.density, fixture.fontScale.value),
+                    LocalLayoutDirection provides if (fixture.rtl.value) LayoutDirection.Rtl else LayoutDirection.Ltr,
+                ) {
                     TanukiTheme {
-                        val haze = remember { HazeState() }
+                        val backdrop = rememberLayerBackdrop()
                         Box(Modifier.fillMaxSize()) {
-                            // 合成黑白条纹验证真实背景像素被模糊，不以半透明底色代替模糊证据。
-                            Canvas(Modifier.fillMaxSize().haze(haze, HazeDefaults.style(
-                                tint = Color.Transparent, blurRadius = radius.value, noiseFactor = 0f,
-                            ))) {
+                            // 只录制合成原生条纹，不挂载或捕获任何 WebView；模糊半径由导航层控制。
+                            Canvas(Modifier.fillMaxSize().then(
+                                if (fixture.useBackdrop.value) Modifier.layerBackdrop(backdrop) else Modifier,
+                            )) {
                                 val stripe = 6.dp.toPx()
                                 for (index in 0..(size.width / stripe).toInt()) {
                                     drawRect(if (index % 2 == 0) Color.Black else Color.White,
                                         Offset(index * stripe, 0f), Size(stripe, size.height))
                                 }
                             }
-                            GlassNavigationBar(selected.value, labels, { selected.value = it },
-                                if (useBackdrop.value) haze else null,
-                                Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(16.dp)
+                            GlassNavigationBar(
+                                selectedIndex = fixture.selected.value,
+                                labels = fixture.labels,
+                                onSelect = { fixture.selections += it; fixture.selected.value = it },
+                                backdrop = if (fixture.useBackdrop.value) backdrop else null,
+                                modifier = Modifier.align(Alignment.BottomCenter)
+                                    .widthIn(max = if (fixture.narrow.value) 320.dp else androidx.compose.ui.unit.Dp.Infinity)
+                                    .navigationBarsPadding().padding(16.dp)
                                     .onGloballyPositioned { coordinates ->
                                         val r = coordinates.boundsInWindow()
-                                        bounds.set(Rect(r.left.toInt(), r.top.toInt(), r.right.toInt(), r.bottom.toInt()))
-                                    }) { index, tint -> TanukiIcon(glyphs[index], tint = tint) }
+                                        val origin = IntArray(2).also(activity.window.decorView::getLocationOnScreen)
+                                        fixture.bounds.set(Rect(r.left.toInt() + origin[0], r.top.toInt() + origin[1],
+                                            r.right.toInt() + origin[0], r.bottom.toInt() + origin[1]))
+                                    },
+                                blurRadius = fixture.radius.value,
+                            ) { index, tint -> TanukiIcon(glyphs[index], tint = tint) }
                         }
                     }
-                    }
                 }
             }
-            find("工作台"); SystemClock.sleep(700)
+        }
+        fixture.labels.forEach { find(it) }
+        instrumentation.waitForIdleSync(); SystemClock.sleep(700)
+    }
+
+    private fun glassTab(label: String): AccessibilityNodeInfo {
+        find(label)
+        // 页面标题可能与页签同名；逐个检查候选，不能误把非交互标题当作导航。
+        for (candidate in nodes().filter { matches(it, label) && it.isVisibleToUser }.asReversed()) {
+            var node: AccessibilityNodeInfo? = candidate
+            // 已选 Tab 不暴露点击动作；父节点也须刷新，避免读取缓存中的旧选择。
+            while (node != null && node.refresh()) {
+                if (node.isClickable || node.isSelected) return node
+                node = node.parent
+            }
+        }
+        error("Tab has no selectable ancestor: $label")
+    }
+    private fun glassTabBounds(label: String) = Rect().also(glassTab(label)::getBoundsInScreen)
+    private fun assertGlassSelection(fixture: GlassFixture, selected: Int, calls: List<Int>) {
+        var actual: Pair<Int, List<Int>>? = null
+        // 回调在主线程写入；在同一线程复制后再断言，避免读取可变列表时发生竞争。
+        instrumentation.runOnMainSync { actual = fixture.selected.value to fixture.selections.toList() }
+        assertEquals("Selected index and exact callback history", selected to calls, actual)
+        fixture.labels.forEachIndexed { index, label ->
+            assertEquals("Accessibility selection must follow committed state: $label", selected == index, glassTab(label).isSelected)
+        }
+    }
+    private fun assertGlassLabelsVisible(fixture: GlassFixture) {
+        val bar = requireNotNull(fixture.bounds.get())
+        // 无障碍使用屏幕坐标，不能拿减去系统栏后的应用 DisplayMetrics 高度作为屏幕下界。
+        val windowBounds = Rect().also(requireNotNull(instrumentation.uiAutomation.rootInActiveWindow)::getBoundsInScreen)
+        fixture.labels.forEach { label ->
+            val node = find(label)
+            val r = Rect().also(node::getBoundsInScreen)
+            assertTrue("Large label stays inside the visible bar: $label $r in $bar / $windowBounds", node.isVisibleToUser &&
+                r.width() > 0 && r.height() > 0 && bar.contains(r) && windowBounds.contains(r))
+        }
+    }
+
+    private inner class GlassTouch(private var x: Float, private val y: Float) : java.io.Closeable {
+        private val downTime = SystemClock.uptimeMillis()
+        private var active = true
+        init { inject(MotionEvent.ACTION_DOWN) }
+        private fun inject(action: Int) {
+            val event = MotionEvent.obtain(downTime, SystemClock.uptimeMillis(), action, x, y, 0).apply {
+                source = InputDevice.SOURCE_TOUCHSCREEN
+            }
+            try { assertTrue("Touch injection failed: $action", instrumentation.uiAutomation.injectInputEvent(event, true)) }
+            finally { event.recycle() }
+        }
+        fun moveTo(targetX: Float) {
+            check(active)
+            val from = x
+            // 连续 MOVE 越过触摸阈值，不能以无障碍 ACTION_CLICK 冒充拖动。
+            for (step in 1..8) {
+                SystemClock.sleep(25)
+                x = from + (targetX - from) * step / 8f
+                inject(MotionEvent.ACTION_MOVE)
+            }
+            instrumentation.waitForIdleSync(); SystemClock.sleep(200)
+        }
+        fun finish(cancel: Boolean = false) {
+            check(active)
+            inject(if (cancel) MotionEvent.ACTION_CANCEL else MotionEvent.ACTION_UP)
+            active = false
+            instrumentation.waitForIdleSync(); SystemClock.sleep(700)
+        }
+        override fun close() { if (active) finish(cancel = true) }
+    }
+    private fun glassEdge(fixture: GlassFixture, right: Boolean): Float {
+        val bar = requireNotNull(fixture.bounds.get())
+        val margin = 8 * context.resources.displayMetrics.density
+        val x = if (right) (bar.right + margin).coerceAtMost(context.resources.displayMetrics.widthPixels - 1f)
+            else (bar.left - margin).coerceAtLeast(1f)
+        assertTrue("Edge probe must leave the bar but stay on screen", if (right) x > bar.right else x < bar.left)
+        return x
+    }
+    private fun changedGlassPixels(before: Bitmap, after: Bitmap, bounds: Rect): Int {
+        assertEquals(before.width, after.width); assertEquals(before.height, after.height)
+        assertTrue("Pixel probe stays inside screenshot: $bounds", bounds.left >= 0 && bounds.top >= 0 &&
+            bounds.right <= before.width && bounds.bottom <= before.height)
+        var changed = 0
+        for (y in bounds.top until bounds.bottom) for (x in bounds.left until bounds.right) {
+            val a = before.getPixel(x, y); val b = after.getPixel(x, y)
+            // 忽略极小的混色舍入差异，仍检测真实高光、胶囊移动和跨 Tab 的反馈污染。
+            if (kotlin.math.abs(android.graphics.Color.red(a) - android.graphics.Color.red(b)) > 6 ||
+                kotlin.math.abs(android.graphics.Color.green(a) - android.graphics.Color.green(b)) > 6 ||
+                kotlin.math.abs(android.graphics.Color.blue(a) - android.graphics.Color.blue(b)) > 6) changed++
+        }
+        return changed
+    }
+
+    @Test(timeout = 120_000) fun glassNavigationBlursPixelsAndKeepsTabsClickable() {
+        org.junit.Assume.assumeTrue("Native lens and blur require API 33+", android.os.Build.VERSION.SDK_INT >= 33)
+        val activity = launch(); cancelSourceTests()
+        val fixture = GlassFixture().apply { radius.value = 0.dp }
+        var sharp: Bitmap? = null; var blurred: Bitmap? = null
+        try {
+            mountGlassNavigation(activity, fixture)
             sharp = screenshot("glass-source-sharp.png")
-            instrumentation.runOnMainSync { radius.value = 18.dp }
+            instrumentation.runOnMainSync { fixture.radius.value = 18.dp }
             SystemClock.sleep(700)
             blurred = screenshot("glass-source-blurred.png")
-            val bar = requireNotNull(bounds.get())
-            fun stripeEnergy(image: Bitmap): Double {
-                val left = bar.left + (bar.width() * 0.12f).toInt()
-                val right = bar.left + (bar.width() * 0.21f).toInt()
-                val y = bar.top + (6 * context.resources.displayMetrics.density).toInt()
-                return (left until right).map { x ->
-                    kotlin.math.abs(android.graphics.Color.red(image.getPixel(x + 1, y)) -
+            val bar = requireNotNull(fixture.bounds.get())
+            // 在中间两个未选 Tab 的间隙取多行像素，避开文字、图标、胶囊与镜片边缘。
+            val sample = Rect(bar.left + (bar.width() * 0.46f).toInt(), bar.top + (bar.height() * 0.30f).toInt(),
+                bar.left + (bar.width() * 0.54f).toInt(), bar.top + (bar.height() * 0.52f).toInt())
+            fun stripeEnergy(image: Bitmap, region: Rect): Double {
+                assertTrue("Stripe sample stays inside screenshot: $region", region.width() > 1 && region.height() > 0 &&
+                    region.left >= 0 && region.top >= 0 && region.right <= image.width && region.bottom <= image.height)
+                var energy = 0L; var count = 0
+                for (y in region.top until region.bottom) for (x in region.left until region.right - 1) {
+                    energy += kotlin.math.abs(android.graphics.Color.red(image.getPixel(x + 1, y)) -
                         android.graphics.Color.red(image.getPixel(x, y)))
-                }.average()
+                    count++
+                }
+                return energy.toDouble() / count
             }
-            val sharpEnergy = stripeEnergy(sharp!!)
-            val blurredEnergy = stripeEnergy(blurred!!)
+            val sharpEnergy = stripeEnergy(sharp!!, sample)
+            val blurredEnergy = stripeEnergy(blurred!!, sample)
             assertTrue("Fixture must contain visible sharp stripes: $sharpEnergy", sharpEnergy > 3)
             assertTrue("Backdrop blur must reduce stripe edges: $sharpEnergy -> $blurredEnergy", blurredEnergy < sharpEnergy * 0.55)
+            val sourceSample = Rect(sample).apply { offset(0, -(bar.height() + 16 * context.resources.displayMetrics.density).toInt()) }
+            val sourceEnergy = stripeEnergy(sharp!!, sourceSample)
+            assertTrue("Native source stripes must remain sharp", sourceEnergy > 3)
+            assertEquals("Changing bar blur must not blur the source Canvas", sourceEnergy, stripeEnergy(blurred!!, sourceSample), 0.1)
             assertTrue("Navigation label must remain painted above the blur",
                 hasMultipleColors(blurred!!, Rect().also(find("工作台")::getBoundsInScreen)))
-            click("浏览器"); assertEquals(3, selected.value)
-            SystemClock.sleep(500)
+            click("浏览器"); assertGlassSelection(fixture, 3, listOf(3))
+            SystemClock.sleep(700)
             val beforePress = screenshot("glass-navigation-before-press.png")
             var pressed: Bitmap? = null
-            val target = Rect().also(find("浏览器")::getBoundsInScreen)
-            val pressStart = SystemClock.uptimeMillis()
-            fun injectTouch(action: Int) {
-                val event = android.view.MotionEvent.obtain(pressStart, SystemClock.uptimeMillis(), action,
-                    target.exactCenterX(), target.exactCenterY(), 0).apply {
-                    source = android.view.InputDevice.SOURCE_TOUCHSCREEN
-                }
-                try { check(instrumentation.uiAutomation.injectInputEvent(event, true)) }
-                finally { event.recycle() }
-            }
+            val target = glassTabBounds("浏览器")
             try {
-                injectTouch(android.view.MotionEvent.ACTION_DOWN)
-                SystemClock.sleep(350)
-                pressed = screenshot("glass-navigation-pressed.png")
-                val r = requireNotNull(bounds.get())
-                var changed = 0
-                for (y in r.top until r.bottom) for (x in r.left until r.right) {
-                    if (beforePress.getPixel(x, y) != pressed!!.getPixel(x, y)) changed++
+                GlassTouch(target.exactCenterX(), target.exactCenterY()).use {
+                    SystemClock.sleep(350)
+                    pressed = screenshot("glass-navigation-pressed.png")
+                    val nearby = Rect(target).apply { inset(-(8 * context.resources.displayMetrics.density).toInt(),
+                        -(8 * context.resources.displayMetrics.density).toInt()); intersect(bar) }
+                    val localChanges = changedGlassPixels(beforePress, pressed!!, nearby)
+                    val outsideChanges = changedGlassPixels(beforePress, pressed!!, bar) - localChanges
+                    // 允许选中胶囊放大和高光，但反馈不能蔓延到其他 Tab 或提前提交选择。
+                    assertTrue("Selected capsule must provide press feedback", localChanges > 0)
+                    assertTrue("Press feedback must stay near the selected capsule: $outsideChanges pixels",
+                        outsideChanges <= (bar.width() * bar.height() - nearby.width() * nearby.height()) / 200)
+                    fixture.labels.dropLast(1).forEach { label ->
+                        val other = glassTabBounds(label).apply { inset((8 * context.resources.displayMetrics.density).toInt(), 0) }
+                        assertTrue("Press must not change another tab: $label",
+                            changedGlassPixels(beforePress, pressed!!, other) <= other.width() * other.height() / 200)
+                    }
+                    assertGlassSelection(fixture, 3, listOf(3))
                 }
-                // 已选标签的真实按压不应再叠加 Material 图标胶囊涟漪。
-                assertTrue("Press must not add another icon ripple: $changed pixels",
-                    changed < r.width() * r.height() / 200)
-            } finally {
-                injectTouch(android.view.MotionEvent.ACTION_UP)
-                beforePress.recycle(); pressed?.recycle()
-            }
-            instrumentation.runOnMainSync { selected.value = 4 }
-            SystemClock.sleep(400)
-            assertFalse("Settings has no selected bottom tab", nodes().any { it.isSelected })
-            instrumentation.runOnMainSync { useBackdrop.value = false }
-            click("文件"); assertEquals(2, selected.value)
-            screenshot("glass-navigation-fallback.png").recycle()
-            instrumentation.runOnMainSync { largeRtl.value = true }
+                assertGlassSelection(fixture, 3, listOf(3))
+            } finally { beforePress.recycle(); pressed?.recycle() }
+            instrumentation.runOnMainSync { fixture.selected.value = 4 }
             SystemClock.sleep(700)
-            labels.forEach { label ->
-                val r = Rect().also(find(label)::getBoundsInScreen)
-                assertTrue("Large RTL label stays on screen: $label $r", r.width() > 0 && r.height() > 0 &&
-                    r.left >= 0 && r.right <= context.resources.displayMetrics.widthPixels)
-            }
-            click("DSH"); assertEquals(1, selected.value)
+            assertGlassSelection(fixture, 4, listOf(3))
+            screenshot("glass-navigation-no-selection.png").recycle()
+            instrumentation.runOnMainSync { fixture.useBackdrop.value = false }
+            click("文件"); assertGlassSelection(fixture, 2, listOf(3, 2))
+            screenshot("glass-navigation-fallback.png").recycle()
+            instrumentation.runOnMainSync { fixture.rtl.value = true; fixture.fontScale.value = 2f }
+            SystemClock.sleep(700)
+            assertGlassLabelsVisible(fixture)
+            click("DSH"); assertGlassSelection(fixture, 1, listOf(3, 2, 1))
             screenshot("glass-navigation-rtl-font200.png").recycle()
         } finally { sharp?.recycle(); blurred?.recycle(); cleanup(activity) }
+    }
+
+    @Test(timeout = 120_000) fun glassNavigationDragPreviewsThenCommitsOnceAndCancels() {
+        val activity = launch(); cancelSourceTests()
+        val fixture = GlassFixture()
+        var before: Bitmap? = null; var during: Bitmap? = null; var committed: Bitmap? = null; var cancelled: Bitmap? = null
+        try {
+            mountGlassNavigation(activity, fixture)
+            assertGlassSelection(fixture, 0, emptyList())
+            val bar = requireNotNull(fixture.bounds.get())
+            before = screenshot("glass-drag-before.png")
+            // 从未选中的 Tab 开始，证明可拖区域不是只有当前胶囊。
+            val start = glassTabBounds("DSH")
+            GlassTouch(start.exactCenterX(), start.exactCenterY()).use { touch ->
+                touch.moveTo(glassTabBounds("文件").exactCenterX())
+                assertGlassSelection(fixture, 0, emptyList())
+                touch.moveTo(glassEdge(fixture, right = true))
+                during = screenshot("glass-drag-during.png")
+                assertGlassSelection(fixture, 0, emptyList())
+                val previewTarget = glassTabBounds("浏览器")
+                assertTrue("Drag preview must reach the far tab without committing",
+                    changedGlassPixels(before!!, during!!, previewTarget) > previewTarget.width() * previewTarget.height() / 100)
+                touch.finish()
+            }
+            committed = screenshot("glass-drag-end.png")
+            assertGlassSelection(fixture, 3, listOf(3))
+            val last = glassTabBounds("浏览器")
+            GlassTouch(last.exactCenterX(), last.exactCenterY()).use { touch ->
+                touch.moveTo(glassEdge(fixture, right = false))
+                assertGlassSelection(fixture, 3, listOf(3))
+                screenshot("glass-drag-cancel-during.png").recycle()
+                touch.finish(cancel = true)
+            }
+            cancelled = screenshot("glass-drag-cancel-end.png")
+            assertGlassSelection(fixture, 3, listOf(3))
+            assertTrue("Cancellation must restore the committed capsule", changedGlassPixels(committed!!, cancelled!!, bar) <= bar.width() * bar.height() / 100)
+            GlassTouch(last.exactCenterX(), last.exactCenterY()).use { touch ->
+                touch.moveTo(glassEdge(fixture, right = false))
+                assertGlassSelection(fixture, 3, listOf(3))
+                touch.finish()
+            }
+            assertGlassSelection(fixture, 0, listOf(3, 0))
+            screenshot("glass-drag-left-clamped-end.png").recycle()
+            val first = glassTabBounds("工作台")
+            GlassTouch(first.exactCenterX(), first.exactCenterY()).use { touch ->
+                touch.moveTo(glassTabBounds("文件").exactCenterX())
+                assertGlassSelection(fixture, 0, listOf(3, 0))
+                instrumentation.runOnMainSync { fixture.selected.value = 1 }
+                SystemClock.sleep(700)
+                touch.moveTo(glassEdge(fixture, right = true))
+                touch.finish()
+            }
+            assertGlassSelection(fixture, 1, listOf(3, 0))
+            screenshot("glass-drag-external-selection-end.png").recycle()
+        } finally { before?.recycle(); during?.recycle(); committed?.recycle(); cancelled?.recycle(); cleanup(activity) }
+    }
+
+    @Test(timeout = 120_000) fun glassNavigationNullBackdropDragsInRtlAndKeepsLargeTabsClickable() {
+        val activity = launch(); cancelSourceTests()
+        val fixture = GlassFixture(backdrop = false, rtl = true, fontScale = 2f)
+        var before: Bitmap? = null; var during: Bitmap? = null
+        try {
+            mountGlassNavigation(activity, fixture)
+            assertGlassLabelsVisible(fixture)
+            assertGlassSelection(fixture, 0, emptyList())
+            val first = glassTabBounds("工作台"); val last = glassTabBounds("浏览器")
+            assertTrue("RTL reverses physical tab order", first.centerX() > last.centerX())
+            before = screenshot("glass-null-rtl-font200-before.png")
+            GlassTouch(first.exactCenterX(), first.exactCenterY()).use { touch ->
+                touch.moveTo(glassTabBounds("文件").exactCenterX())
+                assertGlassSelection(fixture, 0, emptyList())
+                touch.moveTo(glassEdge(fixture, right = false))
+                during = screenshot("glass-null-rtl-font200-during.png")
+                assertTrue("Null backdrop still previews the far tab",
+                    changedGlassPixels(before!!, during!!, last) > last.width() * last.height() / 100)
+                assertGlassSelection(fixture, 0, emptyList())
+                touch.finish()
+            }
+            screenshot("glass-null-rtl-font200-end.png").recycle()
+            assertGlassSelection(fixture, 3, listOf(3))
+            GlassTouch(last.exactCenterX(), last.exactCenterY()).use { touch ->
+                touch.moveTo(glassEdge(fixture, right = true))
+                assertGlassSelection(fixture, 3, listOf(3))
+                touch.finish()
+            }
+            assertGlassSelection(fixture, 0, listOf(3, 0))
+            // 真实 DOWN/UP 验证拖动之后仍能点击，另保留无障碍点击路径。
+            val file = glassTabBounds("文件")
+            GlassTouch(file.exactCenterX(), file.exactCenterY()).use { touch ->
+                SystemClock.sleep(60)
+                touch.finish()
+            }
+            assertGlassSelection(fixture, 2, listOf(3, 0, 2))
+            click("DSH"); assertGlassSelection(fixture, 1, listOf(3, 0, 2, 1))
+            val dsh = glassTabBounds("DSH")
+            GlassTouch(dsh.exactCenterX(), dsh.exactCenterY()).use { touch ->
+                touch.moveTo(glassEdge(fixture, right = false))
+                assertGlassSelection(fixture, 1, listOf(3, 0, 2, 1))
+                // 布局方向重建后，旧手势的 UP 不能提交旧坐标映射得到的 Tab。
+                instrumentation.runOnMainSync { fixture.rtl.value = false }
+                SystemClock.sleep(700)
+                touch.moveTo(glassEdge(fixture, right = true))
+                touch.finish()
+            }
+            assertGlassSelection(fixture, 1, listOf(3, 0, 2, 1))
+            assertGlassLabelsVisible(fixture)
+            screenshot("glass-null-layout-change-end.png").recycle()
+            val resizedStart = glassTabBounds("DSH")
+            GlassTouch(resizedStart.exactCenterX(), resizedStart.exactCenterY()).use { touch ->
+                touch.moveTo(glassTabBounds("文件").exactCenterX())
+                instrumentation.runOnMainSync { fixture.narrow.value = true }
+                SystemClock.sleep(700)
+                touch.moveTo(glassEdge(fixture, right = true))
+                touch.finish()
+            }
+            assertGlassSelection(fixture, 1, listOf(3, 0, 2, 1))
+            assertGlassLabelsVisible(fixture)
+            assertTrue("Tab supports keyboard focus", glassTab("文件").performAction(AccessibilityNodeInfo.ACTION_FOCUS))
+            instrumentation.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_ENTER)
+            instrumentation.waitForIdleSync(); SystemClock.sleep(700)
+            assertGlassSelection(fixture, 2, listOf(3, 0, 2, 1, 2))
+            screenshot("glass-null-narrow-keyboard-end.png").recycle()
+        } finally { before?.recycle(); during?.recycle(); cleanup(activity) }
     }
 
     @Test fun setupGuideFirstStepSourceVersionAndLocalThemeScreenshots() {
@@ -437,6 +672,16 @@ class SetupPresentationTest {
             tap("第 1 步，Ubuntu")
             instrumentation.runOnMainSync { state.value=state.value.copy(snapshot=beforeDownload) }
             light = run { SystemClock.sleep(300); screenshot("setup-guide-light-font130.png") }
+            val nav = glassTabBounds("DSH")
+            val density = context.resources.displayMetrics.density
+            fun backgroundRed(y: Int) = (nav.centerX() - 8..nav.centerX() + 8).map { x ->
+                android.graphics.Color.red(light!!.getPixel(x, y))
+            }.average()
+            // 此处上下都是合成页面留白，玻璃不能因顶部 inset 坐标错位而采到远处的深色安装按钮。
+            val pageBackground = backgroundRed(nav.top - (24 * density).toInt())
+            val glassBackground = backgroundRed(nav.top + (2 * density).toInt())
+            assertTrue("Native backdrop must stay aligned with the page: $pageBackground -> $glassBackground",
+                kotlin.math.abs(pageBackground - glassBackground) < 35)
             mount(activity, state, rec, browser.view, night = true, fontScale = 1.3f)
             find("手动优先：清华 TUNA"); find("Ubuntu 镜像：Ubuntu Base 26.04.1 LTS")
             dark = run { SystemClock.sleep(300); screenshot("setup-guide-dark-font130.png") }
@@ -590,6 +835,24 @@ class SetupPresentationTest {
             click("DSH"); awaitAttached(activity, web)
             loadHtml(web, VIEWPORT_HTML, "typeof window.__setupMarker==='string'")
             val before = awaitViewport(web); val marker = before.marker; val origin = before.timeOrigin
+            // 在真实 DshWebView 附着时跨越多个页签拖动，预览和取消都不能拆卸或重载文档。
+            val dragStart = glassTabBounds("DSH")
+            GlassTouch(dragStart.exactCenterX(), dragStart.exactCenterY()).use { touch ->
+                touch.moveTo(glassTabBounds("浏览器").exactCenterX())
+                assertSame(web, attachedWebView(activity, web))
+                assertEquals(origin, awaitViewport(web).timeOrigin, 0.0)
+                touch.finish(cancel = true)
+            }
+            // 实际释放切到原生页再返回，也必须复用同一个网页实例与文档。
+            GlassTouch(dragStart.exactCenterX(), dragStart.exactCenterY()).use { touch ->
+                touch.moveTo(glassTabBounds("工作台").exactCenterX())
+                touch.finish()
+            }
+            assertFalse(glassTab("DSH").isSelected)
+            click("DSH"); awaitAttached(activity, web)
+            assertSame(web, attachedWebView(activity, web))
+            assertEquals(origin, awaitViewport(web).timeOrigin, 0.0)
+            assertEquals(marker, awaitViewport(web).marker)
             find("进入全屏")
             beforeShot = run { SystemClock.sleep(300); screenshot("setup-webview-before.png") }
             assertTrue(before.w > 0 && before.h > 0 && boundsOf(web).width() > 0 && boundsOf(web).height() > 0)
