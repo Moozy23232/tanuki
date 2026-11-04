@@ -26,7 +26,8 @@ Bundled native components:
   are available with this project; do not distribute binary-only releases.
 
 Android/runtime dependencies (resolved versions; direct declarations in
-app/build.gradle.kts; licenses/ANDROID-DEPENDENCIES.md retains the main release baseline):
+app/build.gradle.kts; actual artifact hashes and POM declarations in
+licenses/ANDROID-DEPENDENCIES.md and licenses/android-runtime-dependencies.json):
 Apache-2.0 license text is included in licenses/Apache-2.0.txt.
 
 * AndroidX WebKit 1.10.0, Activity 1.9.0, Compose UI 1.10.3, Material3 1.4.0,

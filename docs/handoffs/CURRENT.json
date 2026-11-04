@@ -1,7 +1,7 @@
 {
   "schema": 1,
-  "record": "docs/handoffs/20261104-0949-rebase-liquid-main.md",
-  "recordSha256": "291d42058d9737722da6237d0d004ee3edd1a34952b84d51c4193ce59eb83b57",
-  "sourceFingerprint": "4cda2d8b73263e1ed73becb3fafdf0c30e8e4bd8c353ae25a45e90f536c96380",
-  "fileCount": 298
+  "record": "docs/handoffs/20261104-1106-release-014.md",
+  "recordSha256": "6b808b3c673681f00c595a3521a7f6dc5734bdfbd91623248b197c87a785822a",
+  "sourceFingerprint": "874ab458d081701418827666adb805fadda7b28b0536837d16213a44a8623c3d",
+  "fileCount": 401
 }

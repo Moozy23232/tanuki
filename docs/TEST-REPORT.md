@@ -2,10 +2,53 @@
 
 Tanuki验证目标：`com.tanuki.modern.workspacecheck`，命名空间 `com.tanuki`，ARM64、minSdk26/targetSdk34。debug/release构建与证书、宿主与设备执行必须分别记录，源码中有测试不等于已运行。
 
+## v0.1.4/6 release 验证（2026-11-04）
+
+- 用户确认0.1.4并授权push；main同步用户squash合并PR #2后的dbd30f9，tree与已测PR37dcedd一致，保留上传和AI只读修复。版本code6高于当前设备/本地及公开清单最高5；公开v0.1.3/5与v0.1.2/4已核对。
+- 新增已测APK固定字节封装参数，推送后不重新编译：`--verified-apk`与`--verified-apk-sha256`成对验证，临时固定副本、实际APK身份/签名与发布副本均复验。默认构建和production重新签名路径保留；18项宿主回归通过，含错误hash/身份拒绝、原路径被覆盖仍保留已测字节。工作流12、公开边界19也通过，共49项宿主测试。
+- 重新采集实际79个运行归档（78唯一坐标），SHA全部匹配，新增60 POM/42上游许可文本；原有5项缺POM许可声明范围保留。最终APK内79项Markdown清单、Kyant两NOTICE与共享Apache全文逐字节核对；JSON仅在源码归档，未把不存在的APK JSON条目当成实际内容。
+- 0.1.4/6 release与AndroidTest、release JVM/lint单一Gradle构建 **4分17秒成功**。**release JVM97项通过，0失败/错误/跳过；release lint0错误/71警告/1Hint**。本节是本轮新跑，与下方0.1.3 debug结果分开。
+- 实际候选为com.tanuki.modern.workspacecheck、ARM64、min26/target34、non-debuggable、开发证书371dc301…不变；**10,361,052字节**，SHA-256 `97c738c68e6f3ecf96a106db2edc8f5423f0a73ef90a12532c572d809bd989a6`。更新/浏览器provider组件独立且非导出。独立检查最初错误假设APK含JSON清单，按Gradle实际MD资产路径核对后通过，没有修改APK。
+- 同一Pixel_7_API_34_arm64/emulator-5572、API34/WebView159，确认无真实任务后同包同证书覆盖。覆盖前旧debug包种合成文件1项通过（2.951秒）；实际release带 `verifyUpgradeMarker=true` 跑 **44项全部通过，249.955秒**，包含下节41项选择与ApplicationUpdateNativeTest整类3项。原值读回并删除标记，不重新创建冒充保留；无失败/跳过/超时/仪器中断。
+- 这是开发签名release，不是正式密钥或真机验收；真实MIUI/模型/账号、完整Ubuntu环境升级及既有全屏退出断言仍未全面验。API Key保存暂停。最终封装复用上述已测SHA，输出0.1.4六附件；旧发布目录不改写。完整发布交接见[本次记录](handoffs/20261104-1106-release-014.md)。
+
+## PR #2、上传与 AI 只读组合验证（2026-11-04）
+
+- 固定PR #2 head `37dcedd38766745e226b5133e2a1556a32990963`，基于f02d60b，两个提交本地整合于 `codex/pr2-upload-browser`。main/origin/main未推送；用户先等本地结果，再自行在GitHub合并。组合包包含本轮未提交的上传与浏览器修复，不等于原PR已经包含这两项修复。
+- 用户明确“选文件确定后无附件”：旧WebView `parseResult` 在真实159内核对ClipData-only结果返回0个，新解析保留2个；经MainActivity、真实DOM、Blob Worker XHR上传后服务器收到两份完整UTF-8原字节。真实系统SAF单选、取消/重载/销毁、来源及私有URI拒绝共5项通过。content/file直接访问仍关闭，没有改官方DSH包。
+- 用户进一步明确AI查看不需要操作权。合法当前连接可读普通当前页的tabs/snapshot/screenshot，人接管时也可读；所有点击/输入/滚动/导航/标签变更仍需操作权，读取不偷偷切页。OAuth临时页读写拒绝，元数据不泄漏；新增3项控制回归和2项原生可见回归均通过。
+- 最后组合Gradle构建 **2分23秒成功**：modern/compat debug、modern AndroidTest、**JVM97项，0失败/错误/跳过**；modern lint **0错误/71警告/1Hint**。Gradle8.13、AGP8.13.2、Kotlin2.3.10、compileSdk36，target34/min26；前一组合构建9分59秒和实际79项依赖解析属于中间结果，未替代最后版本。
+- 同一专用 `Pixel_7_API_34_arm64 / emulator-5572`、API34/WebView159，核对包名/target/证书后覆盖安装实际debug APK。**两组41项全过**：核心23项139.877秒，关联18项133.720秒；无失败/跳过/host timeout/仪器中断。含上传5、控制13、原生撤权可读2、玻璃导航3、认证2、viewport1、Blob1、安装器5、文件5、DSH全屏1、整页/缩放/小窗1、通知/density1、接管/后台/重建1。
+- 第一轮原上传3项失败（7.309秒）仅证明MIME/非法URI/重复回调缺口，直接文件字节本身成功，因此撤回初始contentAccess根因判断。SDK缺失4分33秒及Maven DNS1分53秒失败已补环境/重试解决，不计产品通过。最初组合上传5项均失败（56.671秒），定位为loadDataWithBaseURL无历史URL的测试页与新原生origin校验不符；只改夹具为真实HTTP/loadUrl、焦点首帧与触屏坐标，最终5项通过，未放宽产品校验。
+- 宿主工作流12、发布12、公开边界19项本轮通过。测试APK为 `com.tanuki.modern.workspacecheck`、0.1.3/5 debug，开发证书不变；**14,110,161字节**，SHA-256 `fa2765471e57bcc9b1889d9b7f85afc6f2d04a8fede773d810b506460cf01b5b`，副本在builds/workspacecheck/pr2-upload-browser。既有releases/0.1.3六附件校验通过，未改写。
+- 真实MIUI/账号/模型、完整Ubuntu/Node/DSH会话及低API渲染未本轮验收；Compat仅编译。既有退出全屏systemBars断言未修复、未计入41项。API Key保存继续暂停。具体可复现选择与数据边界见[当前发布交接](handoffs/20261104-1106-release-014.md)。
+
+### PR #2 组合41项的可复现选择
+
+整类：`DshFileUploadTest`、`AgentBrowserControlTest`、`WebAuthenticationTest`、`DshViewportTest`、`BlobDownloadTest`、`ApkInstallAccessTest`、`FilesBrowserPresentationTest`。另选如下方法（完整类名前缀为 `com.tanuki.`）：
+
+```text
+BrowserWorkspacePresentationTest#revokedAiKeepsDshBrowserEntryAndUserPageVisible
+BrowserWorkspacePresentationTest#defaultConnectionAndTouchTakeoverSurviveBackgroundAndRecreation
+BrowserOverlayPresentationTest#revokedAiCanStillOpenAndViewBrowserOverlay
+BrowserOverlayPresentationTest#fullDocumentAndAiZoomAreIndependentOfSmallWindow
+BrowserOverlayPresentationTest#displayDensityKeepsCollapsedControlsReachableAndNotificationStopIsFinal
+SetupPresentationTest#glassNavigationBlursPixelsAndKeepsTabsClickable
+SetupPresentationTest#glassNavigationDragPreviewsThenCommitsOnceAndCancels
+SetupPresentationTest#glassNavigationNullBackdropDragsInRtlAndKeepsLargeTabsClickable
+SetupPresentationTest#actualDshWebViewSurvivesFullscreenWithoutReload
+```
+
+官方固定0.2.1-rc.5上传/UI公开包经仓库锁SHA-512核对：File/Blob走Blob Worker XHR原字节上传；只有显式ReadableStream走stream fetch，勿为普通附件引入HTTP流兼容改写。上述用例是合成HTTP页面、MediaStore文件和RPC，不是实际模型任务。
+
+## PR #2 作者的同步后验证（2026-11-04，独立历史）
+
+作者在隔离包/API36 `Tanuki_UI_API36 / emulator-5554` 跑97项JVM、modern lint0错误/71警告/1提示，双debug/AndroidTest编译及8项仪器回归通过：Setup的三个glassNavigation和actualDshWebView全屏，以及ApkInstallAccess的预读授权、旧VIEW无预授权、旧URI/到期回收、外部URI拒绝四项。SDK36可空applicationInfo按flags=0拒绝处理，syncNotices使用Sync防旧资产残留；曾因重复Apache资产构建失败，改为共享全文/保留NOTICE后通过。不是本机API34或本轮0.1.4的新跑结果；低API、真机/真实环境仍未验。
+
 ## 液态玻璃分支验证（2026-11-03，整合 main 前）
 
 - Kotlin2.3.10/Compose1.10.3/Backdrop1.0.6 下，双debug/AndroidTest、97项JVM通过；双lint各0错误/70警告/1提示，31项宿主回归通过。API36隔离包的10项E2E通过，覆盖真实拖动/取消/RTL/键盘、大字体、原生采样对齐、WebView切页/全屏及设置/文件/更新界面。
-- 当时版本0.1.1/3，不代表本轮0.1.3/5重测；低API/真机/真实环境未验收。归档必要结论后移除重复过程交接，后续结果见[当前交接](handoffs/20261104-0949-rebase-liquid-main.md)。
+- 当时版本0.1.1/3，不代表本轮0.1.3/5重测；低API/真机/真实环境未验收。归档必要结论后移除重复过程交接，后续结果见[测试现状](TEST-REPORT.md)。
 
 ## v0.1.3/5 安装器URI修复与发布包验证（2026-11-03）
 
@@ -16,7 +59,7 @@ Tanuki验证目标：`com.tanuki.modern.workspacecheck`，命名空间 `com.tanu
 - 修复先推送为6cfda3e，再构建最终0.1.3/code5候选release：构建102.7秒、原生对应源码17.4秒，实际APK为com.tanuki.modern.workspacecheck、ARM64、min26/target34、non-debuggable，开发证书不变。APK **7,926,865字节**，SHA-256 `dbbb4cf2647ed00f6a44423c61a4cdaef76bad730a61a3aaced48f1f8d18b6df`；两个文件provider组件独立、均非导出且仅允许URI授权，清单/签名/字节/源码与原生附件校验和公开边界扫描通过。
 - 最终release AndroidTest、release JVM及release lint单一Gradle构建1分52秒成功；**release JVM97项全过、0失败/错误/跳过，release lint0错误/53警告/1提示**。同一AVD实际覆盖发布APK及配套test，携带 `verifyUpgradeMarker=true` 运行11类选定 **34项全过，171.826秒**，包含新增5项、真实系统确认页、浏览器/文件/进度相关既有范围与覆盖前合成文件原值；无跳过、host timeout、ADB断线或仪器中断。
 - 独立APK核对最初误把合并manifest的provider总数断言为2，忽略AndroidX Startup，改成按updates/browserfiles两个authority筛选后通过；这是核验脚本误判，未修改APK或放宽两者独立/非导出/只读边界。最终收尾文档统一提交后刷新源码与6附件清单，APK必须维持上述已测SHA。
-- 这些为AOSP ARM64 API34合成回归；MIUI真机、完整Linux环境、真实账号/模型仍未测，进程死亡后的期限恢复未实际杀进程验证。既有全屏退出断言未在本轮修复或纳入34项通过。完整步骤见[本次交接](handoffs/20261103-1906-sync-package-012.md)。
+- 这些为AOSP ARM64 API34合成回归；MIUI真机、完整Linux环境、真实账号/模型仍未测，进程死亡后的期限恢复未实际杀进程验证。既有全屏退出断言未在本轮修复或纳入34项通过。完整步骤见[应用更新说明](APP-UPDATES.md)。
 
 ## v0.1.2/4 中间包验证（2026-11-03，已归档不交付）
 
@@ -34,7 +77,7 @@ Tanuki验证目标：`com.tanuki.modern.workspacecheck`，命名空间 `com.tanu
 - 失败对照：`BrowserWorkspacePresentationTest#newBrowserPageDefaultsToWindowsAndFullscreenKeepsTheDocument` 在第227行退出全屏后的 `systemBars()` 可见性等待失败，PR 单独复跑仍失败（23.799秒），main 同点失败；根因未修复，不宣称该功能已通过。`BrowserOverlayPresentationTest#displayDensityKeepsCollapsedControlsReachableAndNotificationStopIsFinal` 第303行通知动作缺失，main也同点失败（两项对照共30.540秒）。设备通知权限原为关闭，正常点击原生入口和系统「允许」后，此通知用例 main 1项通过（11.635秒）、PR与合成文件复测2项通过（11.619秒）。通知授权保留，density恢复420。
 - 因此本次62个不同设备用例累计61通过、1项既有全屏断言失败；复跑不重复计数，首轮失败不抹掉，无host timeout/仪器中断/跳过。未发现本 PR 新增功能回归；真机、真实账号/模型、完整 Ubuntu/Node/DSH、旧 Android 渲染与正式签名未验收，API Key保存仍暂停。
 - 流程缺口：PR原样 `check-handoff.py` 会报 Stale handoff；本地测试副本按规则新增本会话交接并刷新后才执行构建，未关闭检查。合并后须同步测试记录、刷新内容指纹；本次没有提交/推送这些文档。完整执行边界见[本次交接](handoffs/20261103-1809-pr-test-plan.md)。
-- 后续用户已在 GitHub squash 合并为 `ece5c82`，0.1.2打包轮快进到该提交；其代码树与上述固定PR一致。同步与新包结果另见[当前交接](handoffs/20261103-1906-sync-package-012.md)，不将本节结果冒充新release重跑。
+- 后续用户已在 GitHub squash 合并为 `ece5c82`，0.1.2打包轮快进到该提交；其代码树与上述固定PR一致。同步与新包结果另见[测试现状](TEST-REPORT.md)，不将本节结果冒充新release重跑。
 
 ## 产物分类验证（2026-11-03，非产品重测）
 

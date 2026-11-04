@@ -128,6 +128,41 @@ class BrowserWorkspacePresentationTest {
         await { !browser.state.value.loading && browser.state.value.title == "Browser laboratory" }
         find("Browser laboratory")
     }
+    @Test fun revokedAiKeepsDshBrowserEntryAndUserPageVisible() = fixture { _, browser, server ->
+        openPage(browser, server.base + "/")
+        if (browser.state.value.authorizedClient == null) click("交回 AI")
+        val view = browser.webView
+        val epoch = js(browser, "performance.timeOrigin")
+        js(browser, "document.querySelector('#draft').value='human draft';true")
+        click("撤销 AI 操作权限")
+        click("DSH"); find("AI 可查看 · 你在操作"); click("查看浏览器")
+        find("Browser laboratory")
+        assertSame(view, browser.webView)
+        assertEquals(epoch, js(browser, "performance.timeOrigin"))
+        assertEquals("human draft", js(browser, "document.querySelector('#draft').value"))
+        val page = Rect()
+        ui { assertTrue(view.isShown); assertTrue(view.getGlobalVisibleRect(page)) }
+        assertTrue(page.width() > 0 && page.height() > 0)
+        // 核对真实网页色块，避免仅有可访问性节点而画面空白仍被计为通过。
+        val pixels = requireNotNull(instrumentation.uiAutomation.takeScreenshot())
+        try {
+            var orange = 0
+            for (y in page.top.coerceAtLeast(0) until page.bottom.coerceAtMost(pixels.height) step 4)
+                for (x in page.left.coerceAtLeast(0) until page.right.coerceAtMost(pixels.width) step 4)
+                    if ((pixels.getPixel(x, y) and 0xffffff) == 0xee7733) orange++
+            assertTrue("撤权后网页应继续绘制", orange > 5)
+        } finally { pixels.recycle() }
+        assertNull(browser.state.value.authorizedClient)
+        assertFalse(browser.library.state.value.aiControlEnabled)
+        assertTrue(rpc(browser, "snapshot").getJSONObject("result").getString("text").contains("Browser laboratory"))
+        assertTrue(rpc(browser, "screenshot").getJSONObject("result").getInt("width") > 0)
+        assertEquals("permission_required", rpc(browser, "back").getJSONObject("error").getString("code"))
+        input(server.base + "/second"); click("前往")
+        await { browser.state.value.url.endsWith("/second") && !browser.state.value.loading }
+        find("Browser laboratory")
+        assertNull(browser.state.value.authorizedClient)
+        assertFalse(browser.library.state.value.aiControlEnabled)
+    }
     @Test fun defaultConnectionAndTouchTakeoverSurviveBackgroundAndRecreation() = fixture { activity, browser, server ->
         openPage(browser, server.base + "/")
         if (browser.state.value.authorizedClient == null) click("交回 AI")
@@ -141,12 +176,12 @@ class BrowserWorkspacePresentationTest {
                 try { instrumentation.sendPointerSync(event) } finally { event.recycle() }
             }
         }
-        touchPage(); find("收回 AI 浏览器权限？"); assertFalse(rpc(browser, "snapshot").getBoolean("ok"))
+        touchPage(); find("收回 AI 浏览器操作权限？"); assertTrue(rpc(browser, "snapshot").getBoolean("ok")); assertFalse(rpc(browser, "back").getBoolean("ok"))
         screenshot("browser-touch-takeover.png"); click("继续交给 AI")
         assertTrue(rpc(browser, "snapshot").getBoolean("ok"))
         touchPage(); click("临时接管"); assertTrue(browser.library.state.value.aiControlEnabled)
         assertNotNull(browser.state.value.idleReturnSeconds)
-        click("交回 AI"); click("撤销 AI 权限"); assertFalse(browser.library.state.value.aiControlEnabled)
+        click("交回 AI"); click("撤销 AI 操作权限"); assertFalse(browser.library.state.value.aiControlEnabled)
         click("文件"); click("浏览器"); assertNull(browser.state.value.authorizedClient)
         click("交回 AI"); assertTrue(browser.library.state.value.aiControlEnabled)
         val view = browser.webView
@@ -175,11 +210,11 @@ class BrowserWorkspacePresentationTest {
         assertEquals(time, js(browser, "performance.timeOrigin"))
         context.startService(Intent(context, BrowserService::class.java).setAction("REVOKE"))
         await { browser.state.value.authorizedClient == null }
-        assertFalse(rpc(browser, "snapshot").getBoolean("ok"))
+        assertTrue(rpc(browser, "snapshot").getBoolean("ok")); assertFalse(rpc(browser, "back").getBoolean("ok"))
     }
     @Test fun multiPageOverviewBookmarksAndHistoryUseNativeControls() = fixture { _, browser, server ->
         openPage(browser, server.base + "/")
-        if (browser.state.value.authorizedClient != null) click("撤销 AI 权限")
+        if (browser.state.value.authorizedClient != null) click("撤销 AI 操作权限")
         val first = browser.state.value.activeTab; val view = browser.webView
         js(browser, "document.querySelector('#draft').value='tab one';true")
         click("页面总览"); click("新建页面"); await { browser.state.value.activeTab != first }; val second = browser.state.value.activeTab
@@ -249,7 +284,7 @@ class BrowserWorkspacePresentationTest {
     }
     @Test fun displayModesSearchFindZoomCaptureAndDownloadAreUsable() = fixture { _, browser, server ->
         openPage(browser, server.base + "/")
-        if (browser.state.value.authorizedClient != null) click("撤销 AI 权限")
+        if (browser.state.value.authorizedClient != null) click("撤销 AI 操作权限")
         click("浏览器菜单"); screenshot("browser-menu-grouped.png"); click("浏览器设置"); screenshot("browser-settings-groups.png")
         click("通用"); click("搜索引擎"); click("DuckDuckGo"); click("完成")
         assertEquals("DUCKDUCKGO", browser.library.state.value.searchEngine)

@@ -15,7 +15,7 @@ import java.io.File
 
 /** Public Ubuntu/Node archives + the actual guest mount and shipped client. No model call. */
 class BrowserRuntimeIntegrationTest {
-    @Test fun realGuestClientRequestsNativePermissionWithoutReadingPageBeforeApproval(): Unit = runBlocking {
+    @Test fun realGuestClientCanListPagesWithoutControlButCannotOperate(): Unit = runBlocking {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
         check(context.packageName.endsWith(".workspacecheck"))
@@ -50,7 +50,8 @@ class BrowserRuntimeIntegrationTest {
                 const client=request.clientId;
                 const status=await callBrowser('status',{},client);
                 assert.equal(status.result.pending,true); assert.equal(status.result.authorized,false);
-                for(const method of ['snapshot','screenshot','navigate']) {
+                assert.equal((await callBrowser('tabs',{},client)).ok,true);
+                for(const method of ['navigate','back','scroll']) {
                     const response=await callBrowser(method,method==='navigate'?{url:'https://example.com'}:{},client);
                     assert.equal(response.ok,false); assert.equal(response.error.code,'permission_required');
                 }
@@ -62,7 +63,7 @@ class BrowserRuntimeIntegrationTest {
             assertNotNull(controller.state.value.pendingClient)
             assertNull(controller.state.value.authorizedClient)
             assertEquals("", controller.state.value.url)
-            android.util.Log.i("TANUKI_PROBE", "GUEST_BROWSER_BRIDGE node=true bind=true skill=true request=true denied_before_grant=true model=false")
+            android.util.Log.i("TANUKI_PROBE", "GUEST_BROWSER_BRIDGE node=true bind=true skill=true request=true read_allowed_operations_denied=true model=false")
         } finally {
             BrowserIntegration.disconnect(manager.paths, controller.connection)
             manager.cancel(); manager.scope.cancel(); RuntimeManager.deleteTree(directory)

@@ -4,11 +4,15 @@
 
 ## 最新交接
 
-[液态玻璃分支同步与精简](handoffs/20261104-0949-rebase-liquid-main.md)已完成：根目录 `feat/liquid-glass-navigation` 基于 `f02d60b`，颜色提交 `c6b0adf`；用户已授权将液态玻璃精简差异统一提交/推送该功能分支，执行结果以最终回执为准。保留0.1.3/5与安装安全修复，适配SDK36可空信息；精简生成清单、重复交接及许可证全文。本轮双debug/AndroidTest、97 JVM、API36独立包8项回归通过，modern lint0错误/71警告/1提示；本机AVD为 `Tanuki_UI_API36`。以下为上游历史，不计本轮新测。
+[v0.1.4 发布与统一推送](handoffs/20261104-1106-release-014.md)：用户确认0.1.4/code6，同workspacecheck开发证书。main基于已合PR #2的dbd30f9；上传ClipData和AI查看/操作分离已实现。实际non-debuggable release新跑97项JVM、44项API34设备回归通过，lint0错误/71警告/1Hint；覆盖前合成文件原值保留。实际79项许可已刷新，封装工具支持固定已测SHA。按用户顺序完成文档/清理后一次commit/push，再复用已测APK生成六附件；最终推送和封装结果以Git远端、发布清单与最终回执为准，不为自指提交另补推送。
+
+[DSH 上传、浏览器显示与 PR #2 组合验证](TEST-REPORT.md)（实现与组合验证完成）：已修复ClipData结果解析。用户明确要求AI无需操作权也可查看普通页面/截图：已分离只读与操作门，操作仍需授权、敏感登录页仍拒绝AI读写。用户要求先本地测、自己在GitHub合并；测试分支codex/pr2-upload-browser已整合PR37dcedd，main/origin/main仍f02d60b。SDK36/BuildTools35已补齐，最后modern/compat debug+AndroidTest、97项JVM、lint0错误/71警告/1Hint通过；同一API34 AVD两组41项全部通过。未推送或发布新版本；开发验证包位置见取包说明。
+
+PR #2作者的[液态玻璃分支同步与精简](TEST-REPORT.md)此前已完成（其结果不是本次新跑）：根目录 `feat/liquid-glass-navigation` 基于 `f02d60b`，颜色提交 `c6b0adf`；用户已授权将液态玻璃精简差异统一提交/推送该功能分支，执行结果以最终回执为准。保留0.1.3/5与安装安全修复，适配SDK36可空信息；精简生成清单、重复交接及许可证全文。本轮双debug/AndroidTest、97 JVM、API36独立包8项回归通过，modern lint0错误/71警告/1提示；本机AVD为 `Tanuki_UI_API36`。以下为上游历史，不计本轮新测。
 
 另一个会话正在核对 DSH 运行时的文件管理限制，仅回答运行限制、不改产品或操作设备；其 `20261103-1937-files-runtime-question.md` 记录尚未落盘，暂不建立文件链接，也不作为本版验证依据。安装器 URI 修正/打包仍按下面的当前记录进行。
 
-[同步main、修复安装器授权并打包v0.1.3](handoffs/20261103-1906-sync-package-012.md)（修复与实际release验证完成）。修复6cfda3e已推送：更新/浏览器使用独立provider组件，保留非导出边界，补ClipData及系统安装器单APK只读有期限授权。最终0.1.3/code5的release JVM97项、release lint0错误/53警告/1提示，以及11类选定34项设备回归全部通过（171.826秒）；包含实际系统确认页、授权回收与覆盖前合成文件读回。按用户最终要求，所有收尾文档统一提交推送后刷新6个交付附件，APK保持已测字节。MIUI真机与既有全屏断言仍未验收。
+[同步main、修复安装器授权并打包v0.1.3](TEST-REPORT.md)（修复与实际release验证完成）。修复6cfda3e已推送：更新/浏览器使用独立provider组件，保留非导出边界，补ClipData及系统安装器单APK只读有期限授权。最终0.1.3/code5的release JVM97项、release lint0错误/53警告/1提示，以及11类选定34项设备回归全部通过（171.826秒）；包含实际系统确认页、授权回收与覆盖前合成文件读回。按用户最终要求，所有收尾文档统一提交推送后刷新6个交付附件，APK保持已测字节。MIUI真机与既有全屏断言仍未验收。
 
 [PR #1 界面改版验证](handoffs/20261103-1809-pr-test-plan.md)（验证完成，用户自行决定合并）。固定 PR `5e08178` 从最新 main `67216c9` 分出。隔离 Modern/Compat 编译、97项 JVM、lint（0错误）和合成文件覆盖检查通过；62个不同设备用例累计61通过、1项全屏退出系统栏断言在 main 也失败。通知用例首轮因权限缺失失败，正常系统授权后 main/PR 均通过，原失败保留。未发现本 PR 新增功能回归，未合并/提交/推送；远端 PR 的交接指纹缺口须后续同步。本机测试 AVD 最终保留 PR debug 0.1.1/3、通知已授权，正式交付仍是前轮 non-debuggable release。
 
@@ -25,27 +29,28 @@
 
 | 项目 | 当前状态 |
 |---|---|
-| 开发/本次交付包 | `com.tanuki.modern.workspacecheck`；ARM64、minSdk26、targetSdk34、版本 0.1.3/5；开发证书的 non-debuggable release，不是正式签名 |
+| 开发/本次交付包 | `com.tanuki.modern.workspacecheck`；ARM64、minSdk26、targetSdk34、版本 0.1.4/6；开发证书的 non-debuggable release，不是正式签名 |
+| 历史debug验证包 | codex/pr2-upload-browser的0.1.3/5 debug已跑41项；本轮0.1.4/6实际release另跑44项，不混算，不作为正式密钥签名 |
 | 标准 modern | `com.tanuki.modern` 是不同包名；用户先前卸载的旧 `.modern` 不恢复，不能把不同包名或不同证书当覆盖升级 |
 | 运行环境 | Ubuntu24.04 ARM64 + Node LTS + npm/pnpm + 官方 DSH；官方 UI/模型/插件/Skills 保留，PRoot 不是恶意代码沙箱 |
 | 登录/API Key | 用户本次明确恢复 DeepSeek 登录跳转排查；API Key 保存仍暂停，不调查/导出真实凭据。合成登录回调已测，真实 DeepSeek 账号登录未验收 |
 | 应用更新 | 固定仓库公开发布来源、同包/证书/更高 code、真实字节/SHA/SDK/APK 复验、缓存 FileProvider/用户确认；安装前阻止 DSH/组件/文件忙碌，见 [更新说明](APP-UPDATES.md) |
 | 环境保留 | 同包同签名覆盖 APK 不自动重装 Ubuntu/Node/DSH；不卸载、清数据、恢复旧快照、迁移签名。完整会话便携迁移仍有限制，见 [更新恢复](UPDATE-RECOVERY.md) |
-| 浏览器 | 默认授权当前工具连接；触摸先暂停，临时接管 30 秒无交互归还，显式撤销持久保留；后台本身不撤销。官方登录临时页不给 AI 读写/截图、不保存历史。完整截图/缩放/小窗实现保留 |
+| 浏览器 | 当前合法连接可查看普通当前页/截图，即使人在操作；点击、输入、滚动、导航等需操作权。触摸先暂停操作，临时接管30秒归还操作权，显式收回持久保留。登录临时页不给AI读写/截图，不保存历史；整页/缩放/小窗保留 |
 | 测试设备 | 用户允许模拟器测试；每台开发机复用一个既有测试 AVD。本机 `Pixel_7_API_34_arm64` / `emulator-5572`，ARM64 API34，无本轮真实任务；不每任新建。首次误建的临时 AVD 已停用，不 wipe/删除数据 |
 
 ## 已实现、待验证与暂停
 
 ### 已实现与已测
 
-- v0.1.3/5修复已在同一ARM64 API34/WebView159模拟器复现并消除系统安装器provider拒绝；实际release的34项范围、97项JVM和签名/SDK/校验见[本次交接](handoffs/20261103-1906-sync-package-012.md)及[测试现状](TEST-REPORT.md)。只计本轮实际执行范围，不把旧62项或debug结果混作本版release。
+- v0.1.3/5修复已在同一ARM64 API34/WebView159模拟器复现并消除系统安装器provider拒绝；实际release的34项范围、97项JVM和签名/SDK/校验见[本次交接](TEST-REPORT.md)及[测试现状](TEST-REPORT.md)。只计本轮实际执行范围，不把旧62项或debug结果混作本版release。
 - 当前四项功能及 API 限流修复的源码/回归已接入；完整命令、失败修正、计数与设备边界见[产品交接](handoffs/20261103-1316-login-app-update.md)与 [TEST-REPORT](TEST-REPORT.md)。模拟器不等同真机，合成 callback 不等同真实账号登录。
 - 既有 DSH 解析优化保留：随包官方固定锁、已核对缓存复用，弱网请求重试/超时与进程组取消，未关闭 TLS/integrity 或把镜像当官方元数据来源。实现细节见 [组件](COMPONENTS.md)，此前验证见 [DSH 修复交接](handoffs/20261103-1051-dsh-resolution-cache.md)，不冒充本轮跑了首次安装/测速。
 - Git 前归档必要结论、清理过期交接、修复引用、重查实际暂存和源码 ZIP 的规则已固化于 `AGENTS.md` / [PUBLICATION](PUBLICATION.md)，不按日期盲删仍有效依据。前轮源码交付基线为 `c0680b4`。
 
 ### 待验证 / 外部阻塞
 
-- MIUI真机、进程死亡后的授权期限恢复、完整运行环境升级仍待验证。既有退出全屏systemBars断言未在本轮修复，未纳入34项通过，不将局部验收当全产品全绿。
+- MIUI真机、进程死亡后的授权期限恢复、完整运行环境升级仍待验证。既有退出全屏systemBars断言未在本轮修复，未纳入本轮44项通过，不将局部验收当全产品全绿。
 - 真实 DeepSeek 登录、真实模型任务、真机，以及完整 Ubuntu/Node/DSH 环境跨 APK 覆盖尚未本轮验收。
 - 用户发布本版清单后，仍需用同包同证书且更高版本的 APK 验证应用内「发现→下载→系统未知来源授权→确认安装」全链；无 Release 时不能造更新成功。
 - 正式密钥/签名迁移/生产发布未执行，正式产品不视为已验收；API Key 保存由用户暂停。
@@ -53,8 +58,8 @@
 
 ## 产物、Git 与下一步
 
-- 当前完整附件在 `artifacts/releases/0.1.3/`，共6份，APK为workspacecheck开发签名、non-debuggable、ARM64、0.1.3/code5；`app-update.json`与实际身份/证书/大小/SHA一致。0.1.1已发布附件保持原样。0.1.2/code4中间包归档于 `archive/0.1.2-code4-before-uri-fix/`，不发布；更早撤回候选仍在原archive目录，详见[取包说明](ARTIFACTS.md)。
+- 本轮完整附件目录为 `artifacts/releases/0.1.4/`，共6份，APK为workspacecheck开发签名、non-debuggable、ARM64、0.1.4/code6；`app-update.json`与实际身份/证书/大小/SHA一致。0.1.1/0.1.3既有发布附件保持原样。0.1.2/code4中间包归档于 `archive/0.1.2-code4-before-uri-fix/`，不发布；更早撤回候选仍在原archive目录，详见[取包说明](ARTIFACTS.md)。
 - 源码准备区为 `artifacts/sources/`，原生对应源码在 `sources/native/`，正式签名中间包在 `builds/production/<版本>/`。发布目录源码与散列须在最后文档写完后刷新，不沿用修复前归档。
-- 用户已授权先推送修复再打包。准备提交681f55a、修复提交6cfda3e已推送origin/main；0.1.3从修复提交构建，实际验证结论继续同步收尾。没有创建tag或上传GitHub Release。
-- 用户发布时从0.1.3目录上传全部6份附件，尤其app-update.json；以同一源码提交创建v0.1.3并标Pre-release。实际系统安装器读取已用AOSP合成路径验证，MIUI真机仍需用户复验；旧版不能倒过来应用新URI修复，首次可从系统文件管理器手动覆盖，不卸载或清数据。
+- 前轮0.1.3交付已完成，准备681f55a、修复6cfda3e、收尾f02d60b均已推送；PR #2已由用户合入dbd30f9。本轮用户追加授权将修复和0.1.4统一推送，再固定已测字节封装；旧0.1.3附件保持原样，不自动创建tag/上传Release。
+- 用户发布时从0.1.4目录上传全部6份附件，尤其app-update.json；以本次源码提交创建v0.1.4并标Pre-release。实际系统安装器读取已用AOSP合成路径验证，MIUI真机仍需用户复验；旧版不能倒过来应用新URI修复，首次可从系统文件管理器手动覆盖，不卸载或清数据。
 - 下一任建立新交接、复用同一AVD，确认无安装/真实任务后再测；既有全屏退出断言和真实环境/账号/弱网未测边界继续保留，不恢复API Key保存排查。

@@ -65,7 +65,8 @@ class AgentBrowserControlTest {
             try { controller.webView.dispatchTouchEvent(event) } finally { event.recycle() }
         }
         touch(); assertTrue(controller.state.value.takeoverRequested)
-        assertEquals("permission_required", code(rpc("tabs", who = canonical)))
+        assertTrue(rpc("tabs", who = canonical).getBoolean("ok"))
+        assertEquals("permission_required", code(rpc("back", who = canonical)))
         ui { controller.resolveTakeover(false) }
         assertEquals(canonical, controller.state.value.authorizedClient)
         touch(); ui { controller.resolveTakeover(true); controller.activateDefaultControl() }
@@ -160,7 +161,82 @@ class AgentBrowserControlTest {
         ui { controller.setVisible(false) }
         assertTrue(rpc("tabs", who = controller.connection.clientId).getBoolean("ok"))
         ui { controller.revoke() }
-        assertEquals("permission_required", code(rpc("tabs", who = controller.connection.clientId)))
+        assertTrue(rpc("tabs", who = controller.connection.clientId).getBoolean("ok"))
+        assertEquals("permission_required", code(rpc("back", who = controller.connection.clientId)))
+    }
+    @Test fun canonicalReadSurvivesHumanControlWhileMutationsStayDenied() {
+        LocalPage().use { page ->
+            ui { controller.navigate(page.url) }
+            repeat(100) { if (controller.state.value.loading || controller.state.value.title != "Browser fixture") Thread.sleep(50) }
+            val canonical = controller.connection.clientId
+            fun assertReadOnly() {
+                assertTrue(rpc("snapshot", who = canonical).getJSONObject("result").getString("text").contains("Browser fixture"))
+                assertTrue(rpc("screenshot", who = canonical).getJSONObject("result").getInt("width") > 0)
+                assertTrue(rpc("tabs", who = canonical).getBoolean("ok"))
+                for (method in listOf("navigate", "click", "type", "scroll", "back", "forward", "reload", "new_tab", "select_tab", "close_tab", "find", "zoom"))
+                    assertEquals(method, "permission_required", code(rpc(method, who = canonical)))
+                assertNull(controller.state.value.authorizedClient)
+            }
+            assertReadOnly()
+            assertNull(controller.state.value.pendingClient)
+            assertEquals("unauthorized", code(rpc("snapshot", who = canonical, token = "incorrect")))
+            assertEquals("permission_required", code(rpc("snapshot")))
+            ui {
+                controller.grantConnection()
+                val event = MotionEvent.obtain(0, 0, MotionEvent.ACTION_DOWN, 1f, 1f, 0)
+                try { controller.webView.dispatchTouchEvent(event) } finally { event.recycle() }
+            }
+            assertTrue(controller.state.value.takeoverRequested)
+            assertReadOnly()
+            ui { controller.resolveTakeover(true) }
+            assertReadOnly()
+            ui { controller.takeControl(); controller.setVisible(false); controller.setVisible(true) }
+            assertReadOnly()
+            assertFalse(controller.library.state.value.aiControlEnabled)
+            assertNull(controller.state.value.pendingClient)
+        }
+    }
+    @Test fun readWithTabIdCannotSwitchTheUsersPage() {
+        val first = controller.state.value.activeTab
+        ui { controller.newTab() }
+        val selected = controller.state.value.activeTab
+        for (method in listOf("snapshot", "screenshot", "tabs")) {
+            assertEquals("tab_not_selected", code(rpc(method, who = controller.connection.clientId,
+                params = JSONObject().put("tabId", first))))
+            assertEquals(selected, controller.state.value.activeTab)
+        }
+        assertNull(controller.state.value.authorizedClient)
+    }
+    @Test fun privateLoginIsHiddenFromReadAndControlEvenWhenGranted() {
+        val publicTab = controller.state.value.activeTab
+        ui {
+            controller.newTab()
+            // 合成敏感页标记，不访问真实授权站点或账号。
+            val entries = AgentBrowserController::class.java.getDeclaredField("tabs").apply { isAccessible = true }.get(controller) as List<*>
+            val tab = entries.last()!!
+            tab.javaClass.getDeclaredField("privateLogin").apply { isAccessible = true }.setBoolean(tab, true)
+            tab.javaClass.getDeclaredField("url").apply { isAccessible = true }.set(tab, "https://example.test/?code=synthetic-auth-secret")
+            tab.javaClass.getDeclaredField("title").apply { isAccessible = true }.set(tab, "synthetic-auth-secret")
+        }
+        for (granted in listOf(false, true)) {
+            if (granted) ui { controller.grantConnection() }
+            for (method in listOf("snapshot", "screenshot"))
+                assertEquals("private_page", code(rpc(method, who = controller.connection.clientId)))
+            val tabs = rpc("tabs", who = controller.connection.clientId).getJSONObject("result")
+            assertEquals("", tabs.getString("activeTab"))
+            assertEquals(1, tabs.getJSONArray("tabs").length())
+            assertEquals(publicTab, tabs.getJSONArray("tabs").getJSONObject(0).getString("id"))
+            assertFalse(tabs.toString().contains("synthetic-auth-secret"))
+            val status = rpc("status", who = controller.connection.clientId).getJSONObject("result")
+            assertFalse(status.has("url")); assertFalse(status.has("title")); assertFalse(status.has("tabId"))
+        }
+        assertEquals("private_page", code(rpc("back", who = controller.connection.clientId)))
+        val privateTab = controller.state.value.activeTab
+        ui { controller.selectTab(publicTab) }
+        val closed = rpc("close_tab", who = controller.connection.clientId, params = JSONObject().put("tabId", publicTab))
+        assertTrue(closed.getBoolean("ok"))
+        assertEquals("", closed.getJSONObject("result").getString("tabId"))
+        assertFalse(closed.toString().contains(privateTab))
     }
     @Test fun queuedMainThreadWorkAndLateResponseTicketsDieOnRevoke() {
         val gate = BrowserPermissionGate()
