@@ -10,6 +10,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -293,12 +294,16 @@ class MainActivity : ComponentActivity() {
                             runtimeRunning = s.service in setOf(ServiceState.STARTING, ServiceState.RUNNING, ServiceState.STOPPING),
                             onStop = { confirmation = "STOP" })
                     },
-                    agentBrowserPage = { modifier, browserFullscreen, onBrowserFullscreen ->
+                    agentBrowserPage = { modifier, browserFullscreen, onBrowserFullscreen, onOpenSettings, bottomInset ->
                         agentBrowser?.let { AgentBrowserPage(it, modifier, browserUnavailable,
                             onShowOverlay = ::requestBrowserOverlay,
                             onHideOverlay = { (application as TanukiApp).hideBrowserOverlay() }, openRequest = browserOpenRequest,
-                            fullscreen = browserFullscreen, onFullscreen = onBrowserFullscreen) }
-                            ?: Text(browserUnavailable ?: "浏览器暂不可用", modifier)
+                            fullscreen = browserFullscreen, onFullscreen = onBrowserFullscreen,
+                            onSettings = onOpenSettings, bottomInset = bottomInset) }
+                            ?: Column(modifier) {
+                                Text(browserUnavailable ?: "浏览器暂不可用")
+                                if (onOpenSettings != null) TextButton(onClick = onOpenSettings) { Text("设置") }
+                            }
                     }
                 )
                 if (overlayPermissionPrompt) AlertDialog(onDismissRequest = { overlayPermissionPrompt = false },

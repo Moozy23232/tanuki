@@ -44,6 +44,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -137,7 +138,7 @@ internal enum class TanukiGlyph { Home, Terminal, Layers, Settings, Folder, File
 @Composable
 fun TanukiUi(model: TanukiUiModel, callbacks: TanukiUiCallbacks, browserView: WebView,
              filesPage: @Composable (Modifier) -> Unit = {},
-             agentBrowserPage: @Composable (Modifier, Boolean, (Boolean) -> Unit) -> Unit = { _, _, _ -> }, browserRequest: Boolean = false,
+             agentBrowserPage: @Composable (Modifier, Boolean, (Boolean) -> Unit, (() -> Unit)?, Dp) -> Unit = { _, _, _, _, _ -> }, browserRequest: Boolean = false,
              browserAuthorized: Boolean = false, browserOpenRequest: Int = 0) {
     var tab by rememberSaveable(key = "tanuki-navigation-5") { mutableIntStateOf(0) }
     val pageStates = rememberSaveableStateHolder()
@@ -175,6 +176,7 @@ fun TanukiUi(model: TanukiUiModel, callbacks: TanukiUiCallbacks, browserView: We
     val layoutDirection = LocalLayoutDirection.current
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val wide = maxWidth >= 840.dp
+        val browserUnderNavigation = tab == 3 && !wide && !activeFullscreen
         // 只捕获原生滚动内容；网页保留原渲染链，旧系统使用高可读性的材质降级。
         val nativeGlass = !wide && (tab == 0 || tab == 4) && Build.VERSION.SDK_INT >= 33
         Row(Modifier.fillMaxSize()) {
@@ -202,7 +204,7 @@ fun TanukiUi(model: TanukiUiModel, callbacks: TanukiUiCallbacks, browserView: We
                 contentWindowInsets = if (activeFullscreen) WindowInsets(0, 0, 0, 0) else ScaffoldDefaults.contentWindowInsets,
                 topBar = {
                     Column {
-                        if (tab != 1 && !activeFullscreen) TanukiHeader(tab, if (tab == 4) settingsSection ?: "设置" else TanukiDestination.entries[tab].title, callbacks,
+                        if (tab != 1 && tab != 3 && !activeFullscreen) TanukiHeader(tab, if (tab == 4) settingsSection ?: "设置" else TanukiDestination.entries[tab].title, callbacks,
                             s.service in setOf(ServiceState.STARTING, ServiceState.RUNNING),
                             settings = ::openSettings, back = ::settingsBack)
                         if (browserRequest && tab != 3) Surface(
@@ -225,7 +227,7 @@ fun TanukiUi(model: TanukiUiModel, callbacks: TanukiUiCallbacks, browserView: We
                         }
                         OperationBanner(s, model.transfers, onCancel = { callbacks.command("CANCEL") },
                             modifier = if (tab == 3 && activeFullscreen) Modifier.displayCutoutPadding().statusBarsPadding()
-                                else if (tab == 1 && !browserRequest && !browserAuthorized) Modifier.statusBarsPadding() else Modifier)
+                                else if (tab == 3 || (tab == 1 && !browserRequest && !browserAuthorized)) Modifier.statusBarsPadding() else Modifier)
                     }
                 }, bottomBar = {
                     if (!wide && !activeFullscreen) Column(
@@ -236,6 +238,7 @@ fun TanukiUi(model: TanukiUiModel, callbacks: TanukiUiCallbacks, browserView: We
                             labels = destinations.map { it.title },
                             onSelect = ::navigate,
                             backdrop = if (nativeGlass) navigationBackdrop else null,
+                            translucentBackground = browserUnderNavigation,
                         ) { index, tint ->
                             TanukiIcon(destinations[index].glyph, destinations[index].title, tint = tint)
                         }
@@ -250,7 +253,14 @@ fun TanukiUi(model: TanukiUiModel, callbacks: TanukiUiCallbacks, browserView: We
                             else { if (!floatingBrowser) callbacks.openBrowser(); floatingBrowser = !floatingBrowser }
                         })
                     2 -> pageStates.SaveableStateProvider("files") { filesPage(pageModifier) }
-                    3 -> pageStates.SaveableStateProvider("browser") { agentBrowserPage(pageModifier, browserFullscreen, { browserFullscreen = it }) }
+                    3 -> pageStates.SaveableStateProvider("browser") {
+                        val browserModifier = if (browserUnderNavigation) Modifier.fillMaxSize().padding(
+                            start = padding.calculateStartPadding(layoutDirection), top = padding.calculateTopPadding(),
+                            end = padding.calculateEndPadding(layoutDirection),
+                        ).consumeWindowInsets(padding) else pageModifier
+                        agentBrowserPage(browserModifier, browserFullscreen, { browserFullscreen = it }, ::openSettings,
+                            if (browserUnderNavigation) padding.calculateBottomPadding() else 0.dp)
+                    }
                     else -> key(tab, settingsSection.takeIf { tab == 4 }) {
                         // 原生内容可滚到玻璃后方，尾部仍预留导航高度，避免最后一项被遮挡。
                         // 先录制再加 inset，使图层与全局坐标使用同一原点，避免玻璃采到上方错位内容。
@@ -278,7 +288,7 @@ fun TanukiUi(model: TanukiUiModel, callbacks: TanukiUiCallbacks, browserView: We
             onExpand = { floatingBrowser = false; tab = 3 },
             content = { floatingModifier -> agentBrowserPage(floatingModifier, false, { enabled ->
                 if (enabled) { floatingBrowser = false; browserFullscreen = true; tab = 3 }
-            }) })
+            }, null, 0.dp) })
     }
 }
 

@@ -50,6 +50,7 @@ internal fun GlassNavigationBar(
     backdrop: Backdrop?,
     modifier: Modifier = Modifier,
     blurRadius: Dp = 16.dp,
+    translucentBackground: Boolean = false,
     icon: @Composable (Int, Color) -> Unit,
 ) {
     if (labels.isEmpty()) return
@@ -81,8 +82,8 @@ internal fun GlassNavigationBar(
         if (selected) lastSelected = selectedIndex
     }
     val tabsBackdrop = rememberLayerBackdrop()
-    // 网页和低版本只提供不透明原生底色，绝不将 AndroidView 放入背景录制层。
-    val fallback = rememberCanvasBackdrop { drawRect(colors.surface) }
+    // 网页靠原生叠放透显，不进入录制层；背板保留足够底色以保证明暗网页上的文字对比度。
+    val fallback = rememberCanvasBackdrop { drawRect(colors.surface.copy(alpha = if (translucentBackground) 0.72f else 1f)) }
     val panelShape = RoundedCornerShape(36.dp)
     val lensShape = RoundedCornerShape(50)
 

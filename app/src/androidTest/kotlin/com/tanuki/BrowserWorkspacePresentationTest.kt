@@ -39,10 +39,20 @@ class BrowserWorkspacePresentationTest {
         return result
     }
     private fun find(label: String): AccessibilityNodeInfo {
-        repeat(50) {
+        var backwards = false
+        var revealed = false
+        repeat(50) { attempt ->
             val all = nodes()
-            all.lastOrNull { (it.text?.toString() == label || it.contentDescription?.toString() == label) && it.isVisibleToUser }?.let { return it }
-            all.firstOrNull { it.isScrollable }?.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)
+            val matches = all.filter { it.text?.toString() == label || it.contentDescription?.toString() == label }
+            matches.lastOrNull { it.isVisibleToUser }?.let { return it }
+            // ponytail-lite: 沿用现有UI回归的显露/双向查找，返回网页后目标可能在当前滚动位置上方。
+            if (!revealed && matches.lastOrNull()?.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SHOW_ON_SCREEN.id) == true) {
+                revealed = true
+            } else {
+                val action = if (backwards) AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD else AccessibilityNodeInfo.ACTION_SCROLL_FORWARD
+                val scroller = all.firstOrNull { it.isScrollable && it.actionList.any { a -> a.id == action } }
+                if (scroller?.performAction(action) != true || attempt == 24) backwards = !backwards
+            }
             SystemClock.sleep(100)
         }
         File(context.cacheDir, "browser-workspace-failure-tree.txt").writeText(nodes().joinToString("\n") { "${it.text} / ${it.contentDescription}" })
@@ -128,6 +138,44 @@ class BrowserWorkspacePresentationTest {
         await { !browser.state.value.loading && browser.state.value.title == "Browser laboratory" }
         find("Browser laboratory")
     }
+    @Test fun compactChromeSharesTitleRowAndWebPixelsShowBehindNavigation() = fixture { _, browser, server ->
+        openPage(browser, server.base + "/")
+        fun bounds(node: AccessibilityNodeInfo) = Rect().also(node::getBoundsInScreen)
+        val address = bounds(find("网址输入框"))
+        val title = nodes().filter { it.text?.toString() == "浏览器" && it.isVisibleToUser }.minBy { bounds(it).top }
+        assertTrue("Address must share the browser title row", bounds(title).centerY() in address.top..address.bottom)
+        assertTrue("Address follows the title", bounds(title).right <= address.left)
+        val back = bounds(find("后退")); val tabs = bounds(find("页面总览"))
+        assertTrue("Navigation tools sit below the address", back.top >= address.bottom && tabs.top >= address.bottom)
+        val web = browser.webView
+        val location = IntArray(2)
+        ui { web.getLocationOnScreen(location) }
+        assertTrue("Tools stay above the page", back.bottom <= location[1] && tabs.bottom <= location[1])
+        var nav = find("DSH")
+        while (!nav.isClickable) nav = requireNotNull(nav.parent)
+        val bottomTab = bounds(nav)
+        assertTrue("WebView extends behind floating navigation", location[1] + web.height >= bottomTab.bottom)
+        val origin = js(browser, "performance.timeOrigin")
+        fun paint(color: String): Bitmap {
+            js(browser, "document.documentElement.style.background='$color';document.body.style.background='$color'")
+            instrumentation.waitForIdleSync(); SystemClock.sleep(400)
+            return requireNotNull(instrumentation.uiAutomation.takeScreenshot())
+        }
+        val red = paint("rgb(255,32,32)"); val blue = paint("rgb(32,32,255)")
+        try {
+            // 取未选页签的上内边距；只有真实网页透过背板时，此处才随网页颜色改变。
+            val x = bottomTab.centerX(); val y = bottomTab.top + (2 * context.resources.displayMetrics.density).toInt()
+            assertTrue("Red web pixels show through the navigation", android.graphics.Color.red(red.getPixel(x, y)) - android.graphics.Color.red(blue.getPixel(x, y)) > 25)
+            assertTrue("Blue web pixels show through the navigation", android.graphics.Color.blue(blue.getPixel(x, y)) - android.graphics.Color.blue(red.getPixel(x, y)) > 25)
+        } finally { red.recycle(); blue.recycle() }
+        screenshot("browser-compact-overlay.png")
+        click("页面总览"); find("新建页面"); click("返回浏览器")
+        click("设置"); find("返回上一页"); click("返回上一页")
+        assertSame(web, browser.webView); assertEquals(origin, js(browser, "performance.timeOrigin"))
+        click("浏览器进入全屏"); find("浏览器退出全屏"); click("浏览器退出全屏"); find("网址输入框")
+        assertSame(web, browser.webView); assertEquals(origin, js(browser, "performance.timeOrigin"))
+    }
+
     @Test fun defaultConnectionAndTouchTakeoverSurviveBackgroundAndRecreation() = fixture { activity, browser, server ->
         openPage(browser, server.base + "/")
         if (browser.state.value.authorizedClient == null) click("交回 AI")

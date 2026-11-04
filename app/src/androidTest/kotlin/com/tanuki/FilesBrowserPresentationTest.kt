@@ -10,12 +10,15 @@ import android.view.MotionEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.dp
 import androidx.test.platform.app.InstrumentationRegistry
 import com.tanuki.browser.AgentBrowserController
 import com.tanuki.storage.WorkspaceFileManager
@@ -201,7 +204,7 @@ class FilesBrowserPresentationTest {
             AgentBrowserControlTest.LocalPage().use { page ->
                 click("浏览器")
                 ui { controller.revoke(); fixtureTab = controller.newTab() }
-                assertRenderedText("搜索或输入网址"); assertRenderedText("前往")
+                assertRenderedText("网址输入框"); assertRenderedText("前往")
                 screenshot("browser-address-empty.png")
                 tap("网址输入框")
                 assertTrue("Touch must reach the address field, not an overlapping WebView", nodes().any { it.isEditable && it.isFocused })
@@ -209,12 +212,27 @@ class FilesBrowserPresentationTest {
                 tap("前往")
                 await { controller.state.value.url == page.url && !controller.state.value.loading }
                 find("Browser fixture")
-                assertRenderedText("搜索或输入网址"); assertRenderedText("前往")
+                assertRenderedText("网址输入框"); assertRenderedText("前往")
                 screenshot("browser-address-loaded.png")
-                tap("网址输入框"); input(page.url + "?second=1"); tap("前往")
+                tap("网址输入框")
+                try {
+                    await {
+                        nodes().firstOrNull { it.isEditable && it.isFocused }?.let {
+                            it.textSelectionStart == 0 && it.textSelectionEnd == page.url.length
+                        } == true
+                    }
+                } catch (error: AssertionError) {
+                    screenshot("browser-address-selection-failure.png")
+                    val field = nodes().firstOrNull { it.isEditable && it.isFocused }
+                    throw AssertionError("Address selection ${field?.textSelectionStart}..${field?.textSelectionEnd}, length=${field?.text?.length}, expected=${page.url.length}", error)
+                }
+                // 已聚焦后的再次点击只定位光标，不把每次点击都强制改成全选。
+                SystemClock.sleep(500); tap("网址输入框")
+                await { nodes().firstOrNull { it.isEditable && it.isFocused }?.let { it.textSelectionStart == it.textSelectionEnd } == true }
+                input(page.url + "?second=1"); tap("前往")
                 await { controller.state.value.url.endsWith("?second=1") && !controller.state.value.loading }
                 assertNull(controller.state.value.authorizedClient)
-                assertRenderedText("搜索或输入网址")
+                assertRenderedText("网址输入框")
             }
         } finally { ui { fixtureTab?.let(controller::closeTab); controller.selectTab(originalTab); activity.finish() } }
     }
@@ -230,11 +248,11 @@ class FilesBrowserPresentationTest {
                 val density = activity.resources.displayMetrics.density
                 activity.setContent {
                     CompositionLocalProvider(LocalConfiguration provides config, LocalDensity provides Density(density, 2f)) {
-                        TanukiTheme { AgentBrowserPage(controller, Modifier.fillMaxSize()) }
+                        TanukiTheme { AgentBrowserPage(controller, Modifier.widthIn(max = 320.dp).fillMaxSize().safeDrawingPadding(), onSettings = {}) }
                     }
                 }
             }
-            assertRenderedText("搜索或输入网址"); assertRenderedText("前往")
+            assertRenderedText("网址输入框"); assertRenderedText("前往")
             screenshot("browser-address-dark-font200.png")
             tap("网址输入框")
             assertTrue(nodes().any { it.isEditable && it.isFocused })
