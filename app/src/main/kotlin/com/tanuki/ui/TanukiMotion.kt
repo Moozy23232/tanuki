@@ -27,28 +27,27 @@ internal fun Modifier.tanukiEnter(): Modifier = composed {
     }
 }
 
-/** 原生页面顶部的环境光渐变，向背景色收敛以保留长页面阅读对比度。 */
+/** 顶部仅保留低透明度烟灰层次，向背景色收敛以维持长页面阅读对比度。 */
 @Composable
 internal fun tanukiPageBrush(): Brush {
     val colors = MaterialTheme.colorScheme
     return Brush.verticalGradient(
         listOf(
-            colors.primaryContainer.copy(alpha = 0.42f),
-            colors.tertiaryContainer.copy(alpha = 0.16f),
+            colors.surfaceContainerHigh.copy(alpha = 0.30f),
+            colors.surfaceContainerLow.copy(alpha = 0.12f),
             colors.background,
         )
     )
 }
 
-/** 静态渐变为首屏主操作聚集注意力，不循环、不随时间变化。 */
+/** 首屏使用低反差灰阶静态渐变，不循环、不随时间变化。 */
 @Composable
 internal fun tanukiHeroBrush(): Brush {
     val colors = MaterialTheme.colorScheme
     return Brush.linearGradient(
         listOf(
-            colors.primaryContainer,
-            colors.secondaryContainer.copy(alpha = 0.96f),
-            colors.tertiaryContainer.copy(alpha = 0.88f),
+            colors.surfaceContainerLow,
+            colors.surfaceContainerHigh,
         )
     )
 }

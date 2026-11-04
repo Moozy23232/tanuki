@@ -45,7 +45,7 @@ internal object ApkInstallAccess {
             // 不预授予普通APK关联应用；只允许实际匹配的、可导出的系统安装处理器。
             val handlers = app.packageManager.queryIntentActivities(intent, PackageManager.MATCH_DEFAULT_ONLY)
                 .mapNotNull { it.activityInfo }
-                .filter { it.exported && it.applicationInfo.flags and
+                .filter { it.exported && (it.applicationInfo?.flags ?: 0) and
                     (ApplicationInfo.FLAG_SYSTEM or ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0 }
                 .distinctBy { ComponentName(it.packageName, it.name) }
             if (handlers.isEmpty()) throw ActivityNotFoundException("没有可用的系统APK安装器")

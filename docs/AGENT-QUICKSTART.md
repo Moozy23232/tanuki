@@ -16,8 +16,8 @@ Tanuki（命名空间为 `com.tanuki`）是 Kotlin/Jetpack Compose Android 客�
 
 需要：
 
-- 完整 JDK17，含 `jlink`；Gradle8.9 Wrapper、AGP8.7.3、Kotlin1.9.24由项目配置。
-- Android SDK：platform-tools、platforms/android-34、build-tools/34.0.0、cmdline-tools/latest；AGP可能按需补充其匹配的 Build Tools。
+- 完整 JDK17，含 `jlink`；Gradle8.13 Wrapper、AGP8.13.2、Kotlin2.3.10及同版Compose编译插件由项目配置。Compose BOM2026.02.00 对齐 UI1.10.3/Material3 1.4.0，液态导航使用 Backdrop1.0.6。
+- Android SDK：platform-tools、platforms/android-36、build-tools/35.0.0、cmdline-tools/latest；发布签名脚本仍需保留 build-tools/34.0.0。compileSdk36 不改变 minSdk26 或 modern/compat 的 targetSdk34/28，已有 SDK34 不必删除。
 - NDK `27.2.12479018`、Git、GNU make、patch、curl、Python3。原生脚本不需要 CMake。
 - 首次构建允许访问 Gradle/Maven、固定 GitHub PRoot提交与官方 talloc 来源；有哈希/提交校验。打包的原生对应源码不等于自动离线构建，缓存齐全后才尝试 `--offline`。
 - 设备测试需要 Android ARM64；当前完整回归环境是 API34、WebView159。x86 Android模拟器不能运行本项目的ARM64 Ubuntu链；管理页至少Chromium123+并通过实际CSS能力检测。

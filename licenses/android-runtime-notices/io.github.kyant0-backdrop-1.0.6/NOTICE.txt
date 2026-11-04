@@ -1,0 +1,9 @@
+Backdrop 1.0.6 (io.github.kyant0:backdrop:1.0.6)
+Copyright 2025 Kyant
+SPDX-License-Identifier: Apache-2.0
+Source: https://github.com/Kyant0/AndroidLiquidGlass/tree/1.0.6
+Full license: ../../Apache-2.0.txt (source tree and packaged assets).
+
+Tanuki attribution (not an upstream NOTICE): the library is unmodified.
+The navigation references the sampling/layout approach of LiquidBottomTabs;
+its gesture implementation is Tanuki code.

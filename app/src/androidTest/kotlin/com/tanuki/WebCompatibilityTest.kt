@@ -17,7 +17,7 @@ class WebCompatibilityTest {
     @Test fun standardPromiseShimRunsBeforePageScriptOnlyAtAllowedOrigin(): Unit = runBlocking {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
-        val major = WebView.getCurrentWebViewPackage()!!.versionName.substringBefore('.').toInt()
+        val major = requireNotNull(WebView.getCurrentWebViewPackage()?.versionName).substringBefore('.').toInt()
         assumeTrue(major < 119)
         context.getSharedPreferences("web",0).edit().putBoolean("legacyPromise",true).commit()
         val server = ServerSocket(0,10,java.net.InetAddress.getByName("127.0.0.1"))
