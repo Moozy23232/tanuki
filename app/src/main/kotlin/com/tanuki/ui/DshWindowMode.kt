@@ -7,7 +7,7 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 
-/** 普通模式避开系统栏；DSH 或浏览器全屏时使用整个窗口。 */
+/** 保持主窗口的edge-to-edge布局；只切换系统栏可见性与刘海策略，占位由Compose处理。 */
 class DshWindowMode(private val window: Window) {
     private val originalCutoutMode = if (Build.VERSION.SDK_INT >= 28) window.attributes.layoutInDisplayCutoutMode else 0
     private val originalBehavior = WindowCompat.getInsetsController(window, window.decorView).systemBarsBehavior
@@ -26,7 +26,6 @@ class DshWindowMode(private val window: Window) {
                 }
             }
         }
-        WindowCompat.setDecorFitsSystemWindows(window, !enabled)
         WindowCompat.getInsetsController(window, window.decorView).apply {
             systemBarsBehavior = if (enabled) WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE else originalBehavior
             if (enabled) hide(WindowInsetsCompat.Type.systemBars()) else show(WindowInsetsCompat.Type.systemBars())

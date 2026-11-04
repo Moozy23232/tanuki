@@ -134,6 +134,8 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // 系统栏占位始终交给Compose，避免全屏往返后窗口与页面重复避让。
+        WindowCompat.setDecorFitsSystemWindows(window, false)
         consumeBrowserIntent(intent)
         browser = DshWebView(this, manager,
             chooser = ::chooseDshFiles,

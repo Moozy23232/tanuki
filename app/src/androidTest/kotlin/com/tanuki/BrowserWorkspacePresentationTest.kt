@@ -8,6 +8,7 @@ import android.os.SystemClock
 import android.view.MotionEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import androidx.test.platform.app.InstrumentationRegistry
+import androidx.core.view.WindowInsetsCompat
 import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
 import androidx.test.runner.lifecycle.Stage
 import com.tanuki.browser.*
@@ -367,6 +368,35 @@ class BrowserWorkspacePresentationTest {
         click("页面总览"); click("关闭此页"); click("返回浏览器")
         assertTrue(browser.state.value.tabs.isNotEmpty()); assertNull(browser.state.value.authorizedClient)
     }
+    @Test fun fullscreenRoundTripsRestoreChromePositionWithoutReload() = fixture { _, browser, server ->
+        openPage(browser, server.base + "/")
+        ui { browser.takeControl() }
+        val view = browser.webView
+        val origin = js(browser, "performance.timeOrigin")
+        js(browser, "document.querySelector('#draft').value='round-trip draft';true")
+        fun geometry(): List<Int> {
+            val address = Rect().also(find("网址输入框")::getBoundsInScreen)
+            val page = Rect()
+            ui { view.getGlobalVisibleRect(page) }
+            return listOf(address.top, page.top, page.height())
+        }
+        val before = geometry()
+        repeat(3) { cycle ->
+            click("浏览器进入全屏"); find("浏览器退出全屏")
+            await { view.height > before[2] }
+            if (cycle == 1) instrumentation.uiAutomation.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK)
+            else click("浏览器退出全屏")
+            // 先等原生栏恢复，避免通用查找器在过渡帧误滚动网页寻找不存在的控件。
+            await { nodes().any { it.contentDescription?.toString() == "网址输入框" && it.isVisibleToUser } }
+            find("网址输入框")
+            try { await { geometry() == before } }
+            catch (error: AssertionError) { throw AssertionError("Fullscreen cycle $cycle shifted chrome: before=$before after=${geometry()}", error) }
+            assertSame(view, browser.webView)
+            assertEquals(origin, js(browser, "performance.timeOrigin"))
+            assertEquals("round-trip draft", js(browser, "document.querySelector('#draft').value"))
+        }
+        screenshot("browser-fullscreen-roundtrip.png")
+    }
     @Test fun newBrowserPageDefaultsToWindowsAndFullscreenKeepsTheDocument() = fixture { activity, browser, server ->
         assertEquals("WINDOWS", browser.state.value.pageMode)
         openPage(browser, server.base + "/")
@@ -375,6 +405,17 @@ class BrowserWorkspacePresentationTest {
         val view = browser.webView
         val epoch = js(browser, "performance.timeOrigin")
         js(browser, "document.querySelector('#draft').value='fullscreen draft';true")
+        fun barVisibility(): List<Boolean> {
+            var result = emptyList<Boolean>()
+            ui {
+                val insets = WindowInsetsCompat.toWindowInsetsCompat(requireNotNull(activity.window.decorView.rootWindowInsets), activity.window.decorView)
+                result = listOf(WindowInsetsCompat.Type.statusBars(), WindowInsetsCompat.Type.navigationBars(),
+                    WindowInsetsCompat.Type.captionBar(), WindowInsetsCompat.Type.systemBars()).map(insets::isVisible)
+            }
+            return result
+        }
+        val initialBars = barVisibility()
+        assertTrue("Status/navigation bars must initially be visible", initialBars.take(2).all { it })
         var beforeHeight = 0
         ui { beforeHeight = view.height }
         click("浏览器进入全屏")
@@ -384,25 +425,17 @@ class BrowserWorkspacePresentationTest {
         assertEquals(epoch, js(browser, "performance.timeOrigin"))
         assertEquals("fullscreen draft", js(browser, "document.querySelector('#draft').value"))
         ui { assertEquals(android.view.View.LAYER_TYPE_HARDWARE, view.layerType) }
-        await {
-            var hidden = false
-            ui { hidden = activity.window.decorView.rootWindowInsets?.let {
-                !androidx.core.view.WindowInsetsCompat.toWindowInsetsCompat(it, activity.window.decorView)
-                    .isVisible(androidx.core.view.WindowInsetsCompat.Type.systemBars())
-            } == true }
-            hidden
-        }
+        // 手机没有captionBar，不能把组合systemBars的false当作状态栏/导航栏都已隐藏。
+        await { barVisibility().take(2).none { it } }
         screenshot("browser-immersive-windows.png")
         instrumentation.uiAutomation.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK)
+        await { nodes().any { it.contentDescription?.toString() == "浏览器进入全屏" && it.isVisibleToUser } }
         find("浏览器进入全屏")
         ui { assertEquals(android.view.View.LAYER_TYPE_NONE, view.layerType) }
-        await {
-            var visible = false
-            ui { visible = activity.window.decorView.rootWindowInsets?.let {
-                androidx.core.view.WindowInsetsCompat.toWindowInsetsCompat(it, activity.window.decorView)
-                    .isVisible(androidx.core.view.WindowInsetsCompat.Type.systemBars())
-            } == true }
-            visible
+        try {
+            await { barVisibility() == initialBars }
+        } catch (error: AssertionError) {
+            throw AssertionError("System bar visibility [status,navigation,caption,combined]: initial=$initialBars restored=${barVisibility()}", error)
         }
         assertEquals(epoch, js(browser, "performance.timeOrigin"))
         assertEquals("fullscreen draft", js(browser, "document.querySelector('#draft').value"))

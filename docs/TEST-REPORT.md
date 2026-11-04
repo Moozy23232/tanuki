@@ -2,6 +2,14 @@
 
 Tanuki验证目标：`com.tanuki.modern.workspacecheck`，命名空间 `com.tanuki`，ARM64、minSdk26/targetSdk34。debug/release构建与证书、宿主与设备执行必须分别记录，源码中有测试不等于已运行。
 
+## 全屏往返与悬浮修复（2026-11-04，独立debug）
+
+- 悬浮修复cbe9e9c：浏览器默认恢复透显，可在通用设置主动开启/保存网页底部控件避让，DSH保护不变。此前双debug/AndroidTest、97 JVM、12项API36专项通过（97.5秒），lint0/71/1；避让项补网页可视帧同步另过，不重复计数。原生宿主不裁切实验仍无法透显，已撤回；不存在的图标编译错误改为复用已有图标。旧过程交接归档删除。
+- 新增全屏往返坐标回归先失败：地址/网页顶部由139/528变为267/656，重复128px状态栏占位。MainActivity在创建时统一edge-to-edge，DshWindowMode不再来回切换decorFits，占位只由Compose处理；不使用负padding、不重建WebView。
+- 旧systemBars断言在API36另有误判：初始和退出均为 `[status=true, navigation=true, caption=false, combined=false]`。手机没有窗口caption，不能要求组合systemBars全部可见；现明确要求状态/导航栏进入全屏都隐藏，退出恢复完整初始可见性。新坐标断言独立验证产品缺陷，没有用测试修改掩盖重复占位。
+- 本轮新跑双debug/AndroidTest、**97 JVM无失败/跳过，modern lint0错误/71警告/1提示**；Tanuki_UI_API36/emulator-5554、WebView133、独立uipolish.workspacecheck包：**13项UI专项全过137.4秒，2项ClipData/系统SAF上传全过8.3秒，共15个不同用例**。往返用例增加原生栏可见等待，避免通用查找器在过渡帧滚动网页，随后2项复跑通过，不累计。
+- 覆盖3次按钮/系统返回往返、地址/网页坐标及高度、状态栏/导航栏、同WebView/草稿/timeOrigin，DSH边界与退出绘制、空页、透明像素、可选避让、文件列表/玻璃、地址栏/暗色200%、后台重建、完整截图/AI缩放/小窗和上传。正常开发安装未覆盖；真机/低API与真实DSH任务未验，不将API36结果扩大为所有平台。当前交接见[全屏修复](handoffs/20261104-1911-fullscreen-insets.md)。
+
 ## v0.1.5/7 PR #3 release 验证（2026-11-04）
 
 - 用户明确测试正常后push并打包0.1.5。固定[PR #3](https://github.com/leezzou/tanuki/pull/3) head `c95fa9fcc80a78489a1bc2d7fc5710dfbe30857a`，merge-base为最新main `a2a591331100e94b8425d7b7c9d31019f459827c`，ahead6/behind0；远端Git引用复核一致。列表缓存曾返回旧PR #2，匿名API失败，改用独立PR页面与Git refs确认。保持0.1.4的上传/AI只读修复，默认版本改0.1.5/code7，高于公开清单与已安装最高6。

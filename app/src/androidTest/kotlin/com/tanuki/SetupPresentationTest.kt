@@ -864,6 +864,7 @@ class SetupPresentationTest {
             assertEquals(origin, awaitViewport(web).timeOrigin, 0.0)
             assertEquals(marker, awaitViewport(web).marker)
             find("进入全屏")
+            val beforeBounds = boundsOf(web)
             beforeShot = run { SystemClock.sleep(300); screenshot("setup-webview-before.png") }
             assertTrue(before.w > 0 && before.h > 0 && boundsOf(web).width() > 0 && boundsOf(web).height() > 0)
             val navigation = glassTabBounds("文件")
@@ -883,10 +884,12 @@ class SetupPresentationTest {
             assertEquals("no reserved cutout strip",0,boundsOf(activity.window.decorView).top)
             assertEquals("document reaches top edge",0,boundsOf(web).top)
             assertEquals(View.LAYER_TYPE_HARDWARE,web.layerType)
-            click("退出全屏"); val after = awaitViewport(web) { it.marker == marker }
+            click("退出全屏"); val after = awaitViewport(web) { it.marker == marker && it.h == before.h && boundsOf(web) == beforeBounds }
             afterShot = run { SystemClock.sleep(300); screenshot("setup-webview-after.png") }
             assertEquals(false, rec.fullscreen.last())
             assertEquals("release fullscreen texture on exit",View.LAYER_TYPE_NONE,web.layerType)
+            assertEquals("DSH bounds must restore without an extra inset", beforeBounds, boundsOf(web))
+            assertTrue("DSH must paint after leaving fullscreen", hasDocumentPixels(afterShot!!, web))
             assertEquals("page must not reload after exiting fullscreen", marker, after.marker)
             assertEquals("timeOrigin must not change after exiting fullscreen", origin, after.timeOrigin, 0.0)
         } finally { beforeShot?.recycle(); fullShot?.recycle(); afterShot?.recycle(); cleanup(activity) }
