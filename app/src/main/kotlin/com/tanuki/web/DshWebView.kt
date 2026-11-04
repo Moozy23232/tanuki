@@ -40,6 +40,7 @@ class DshWebView(private val activity: ComponentActivity, private val manager: R
     private var pendingRestore:Bundle?=null
     private lateinit var blobs: BlobDownloads
     private val popups = mutableSetOf<WebView>()
+    private var fileSelection: ValueCallback<Array<Uri>>? = null
     @SuppressLint("SetJavaScriptEnabled")
     val view = WebView(activity).apply {
         // WebView treats a WRAP_CONTENT height as an unbounded HTML viewport. Compose's
@@ -54,6 +55,7 @@ class DshWebView(private val activity: ComponentActivity, private val manager: R
         }
         val background = android.util.TypedValue()
         if (activity.theme.resolveAttribute(android.R.attr.colorBackground, background, true)) setBackgroundColor(background.data)
+        // 附件仅经系统选择器回调交给 Chromium，不开放网页直接访问本地 URI。
         settings.allowFileAccess = false; settings.allowContentAccess = false
         settings.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
         // Only this origin-isolated DSH document can request a new tab. Popup holders
@@ -78,6 +80,7 @@ class DshWebView(private val activity: ComponentActivity, private val manager: R
                 return WebResourceResponse("text/plain", "utf-8", 403, "Blocked origin", emptyMap(), ByteArrayInputStream("来源不受信任".toByteArray()))
             }
             override fun onPageStarted(view: WebView, url: String, icon: Bitmap?) {
+                cancelFileSelection()
                 authTrace("pageStarted bootstrap=${url==attachedAuthUrl}")
                 if(!destroyed && url!=probeUrl && OriginPolicy.sameOrigin(url,manager.origin)) {
                     // A bootstrap 302 can report only the final URL, with the token removed.
@@ -117,6 +120,7 @@ class DshWebView(private val activity: ComponentActivity, private val manager: R
             }
             override fun onReceivedSslError(view: WebView, handler: SslErrorHandler, error: android.net.http.SslError) { handler.cancel() }
             override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
+                cancelFileSelection()
                 destroyed=true;++probeId;connectAfterProbe=false
                 support.value=support.value.copy(state=WebViewSupportState.FAILED,error="网页渲染进程已退出，请重新连接")
                 manager.web(WebState.RENDER_ERROR); manager.event("WebView 渲染进程已退出，请返回应用重新连接；DSH 进程状态单独显示")
@@ -161,8 +165,28 @@ class DshWebView(private val activity: ComponentActivity, private val manager: R
                 return true
             }
             override fun onShowFileChooser(view: WebView, callback: ValueCallback<Array<Uri>>, params: FileChooserParams): Boolean {
-                val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*").putExtra(Intent.EXTRA_ALLOW_MULTIPLE, params.mode == FileChooserParams.MODE_OPEN_MULTIPLE)
-                chooser(intent, callback); return true
+                if (destroyed || fileSelection != null || !OriginPolicy.sameOrigin(view.url.orEmpty(), manager.origin) ||
+                    params.mode !in setOf(FileChooserParams.MODE_OPEN, FileChooserParams.MODE_OPEN_MULTIPLE)) {
+                    callback.onReceiveValue(null)
+                    return true
+                }
+                val origin = manager.origin
+                val identity = manager.authenticatedUrl
+                fileSelection = callback
+                val result = ValueCallback<Array<Uri>> { uris ->
+                    // 旧选择器结果不可交给重载后的文档或另一次运行的管理页。
+                    if (fileSelection === callback) {
+                        fileSelection = null
+                        val current = !destroyed && origin == manager.origin && identity == manager.authenticatedUrl &&
+                            OriginPolicy.sameOrigin(view.url.orEmpty(), origin)
+                        callback.onReceiveValue(if (current) DshFileChooser.selectedUris(activity, uris,
+                            params.mode == FileChooserParams.MODE_OPEN_MULTIPLE) else null)
+                    }
+                }
+                try { chooser(DshFileChooser.intent(params), result) }
+                catch (_: android.content.ActivityNotFoundException) { result.onReceiveValue(null) }
+                catch (_: SecurityException) { result.onReceiveValue(null) }
+                return true
             }
             override fun onPermissionRequest(request: PermissionRequest) { request.deny() }
         }
@@ -205,6 +229,7 @@ class DshWebView(private val activity: ComponentActivity, private val manager: R
         return true
     }
     fun checkSupport(connectAfter:Boolean=false) {
+        cancelFileSelection()
         connectAfterProbe=connectAfterProbe || connectAfter
         if(destroyed || support.value.state==WebViewSupportState.CHECKING)return
         val info=WebView.getCurrentWebViewPackage()
@@ -265,8 +290,14 @@ class DshWebView(private val activity: ComponentActivity, private val manager: R
         else Toast.makeText(activity, "无法在浏览器中打开此链接；DSH 管理页面与文件链接保持隔离", Toast.LENGTH_LONG).show()
     }
     fun destroy() {
+        cancelFileSelection()
         ++probeId; authObserver.cancel(); compatibility.dispose(); blobs.dispose()
         popups.toList().forEach { it.destroy() }; popups.clear()
         if (!destroyed) view.destroy(); destroyed = true
+    }
+    private fun cancelFileSelection() {
+        val callback = fileSelection
+        fileSelection = null
+        callback?.onReceiveValue(null)
     }
 }

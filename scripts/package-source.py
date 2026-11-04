@@ -8,7 +8,7 @@ import shutil
 import zipfile
 
 ROOT = Path(__file__).resolve().parent.parent
-NAME = "Tanuki-0.1.3"
+NAME = "Tanuki-0.1.4"
 OUTPUT = ROOT / "artifacts/sources" / f"{NAME}-source.zip"
 FILES = (
     ".gitignore", "AGENTS.md", "LICENSE", "README.md", "THIRD_PARTY_NOTICES",

@@ -1,11 +1,13 @@
 # Tanuki 构建产物：从哪里取包
 
-**当前准备发布的是 v0.1.3（versionCode 5）。**
+**当前准备发布的是 v0.1.4（versionCode 6）。**
 
-- 安装 APK：`artifacts/releases/0.1.3/Tanuki-0.1.3-workspacecheck-arm64-release.apk`
-- GitHub 发布：只上传 `artifacts/releases/0.1.3/` 内全部 **6 个附件**，包含 `app-update.json`、完整源码、原生对应源码及散列。
+- 安装 APK：`artifacts/releases/0.1.4/Tanuki-0.1.4-workspacecheck-arm64-release.apk`
+- GitHub 发布：只上传 `artifacts/releases/0.1.4/` 内全部 **6 个附件**，包含 `app-update.json`、完整源码、原生对应源码及散列。
 - 当前是开发证书的 workspacecheck 包，请标记 **Pre-release**；不是正式签名，也没有由 Agent 自动发布。
-- 根目录不再放 APK/ZIP。`archive/` 中的旧 0.1.0 和已撤回、未发布的旧候选 0.1.2/code3 **不要拿来安装或发布**；本次新包是 `releases/0.1.3/` 内的 code5，不能只按版本名称猜测当前附件。已发布0.1.1目录保留原样。
+- 根目录不再放 APK/ZIP。`archive/` 中的旧 0.1.0 和已撤回、未发布的旧候选 0.1.2/code3 **不要拿来安装或发布**；本次新包是 `releases/0.1.4/` 内的 code6，不能只按版本名称猜测当前附件。已发布0.1.1目录保留原样。
+
+2026-11-04 的 PR #2、文件上传和 AI 只读浏览器组合验证包在 `artifacts/builds/workspacecheck/pr2-upload-browser/Tanuki-pr2-upload-browser-debug.apk`，同目录有 `SHA256SUMS`。这是0.1.3/5开发debug验证包，不是新release；`releases/0.1.3/` 的既有6附件保持原样，`sources/` 则对应当前工作树。
 
 ## 目录约定
 
@@ -17,12 +19,14 @@ artifacts/
 ├── SOURCE-SHA256SUMS           # 最近一次源码打包的校验入口
 ├── releases/
 │   ├── 0.1.1/                 # 已发布历史附件，保持原样
-│   └── 0.1.3/                 # 本次完整发布附件（6 个文件，code5）
+│   ├── 0.1.3/                 # 既有发布附件，原样保留
+│   └── 0.1.4/                 # 本次完整发布附件（6 个文件，code6）
 ├── sources/
-│   ├── Tanuki-0.1.3-source.zip # 当前工作树源码的打包副本
+│   ├── Tanuki-0.1.4-source.zip # 当前工作树源码的打包副本
 │   └── native/                # 原生对应源码和同目录校验清单
 ├── builds/
-│   └── production/<版本>/     # 正式签名脚本的中间 APK/签名报告，非完整发布包
+│   ├── production/<版本>/     # 正式签名脚本的中间 APK/签名报告，非完整发布包
+│   └── workspacecheck/pr2-upload-browser/ # 本轮开发debug验证包及SHA256SUMS
 └── archive/
     ├── 0.1.0-dev/             # 旧开发 APK、旧源码和原校验文件
     ├── 0.1.1-before-layout/   # 本次整理前的源码/校验记录；不是完整发布包
@@ -40,7 +44,7 @@ artifacts/
 ```bash
 (cd artifacts && shasum -a 256 -c SOURCE-SHA256SUMS)
 (cd artifacts/sources/native && shasum -a 256 -c native-source-SHA256SUMS)
-(cd artifacts/releases/0.1.2 && shasum -a 256 -c RELEASE-SHA256SUMS && shasum -a 256 -c native-source-SHA256SUMS)
+(cd artifacts/releases/0.1.4 && shasum -a 256 -c RELEASE-SHA256SUMS && shasum -a 256 -c native-source-SHA256SUMS)
 (cd artifacts/archive && shasum -a 256 -c ARCHIVE-SHA256SUMS)
 ```
 

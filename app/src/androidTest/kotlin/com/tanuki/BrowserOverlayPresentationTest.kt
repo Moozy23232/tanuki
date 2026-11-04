@@ -165,6 +165,31 @@ class BrowserOverlayPresentationTest {
         find("拖动浏览器悬浮窗"); find("Browser laboratory")
     }
 
+    @Test fun revokedAiCanStillOpenAndViewBrowserOverlay() = fixture { _, browser, server ->
+        permission(true)
+        ui { browser.navigate(server.base + "/") }
+        await { !browser.state.value.loading && browser.state.value.title == "Browser laboratory" }
+        click("撤销 AI 操作权限")
+        val view = browser.webView
+        val epoch = js(browser, "performance.timeOrigin")
+        click("DSH"); find("AI 可查看 · 你在操作"); click("浏览器小窗")
+        await { browser.state.value.overlayFrame != null }
+        find("Browser laboratory"); find("你在操作 · AI 可查看")
+        val page = Rect()
+        ui { assertSame(view, browser.webView); assertTrue(view.isShown); assertTrue(view.getGlobalVisibleRect(page)) }
+        assertTrue(page.width() > 0 && page.height() > 0)
+        assertEquals(epoch, js(browser, "performance.timeOrigin"))
+        assertNull(browser.state.value.authorizedClient)
+        assertFalse(browser.library.state.value.aiControlEnabled)
+        assertTrue(rpc(browser, "snapshot").getJSONObject("result").getString("text").contains("Browser laboratory"))
+        assertTrue(rpc(browser, "screenshot").getJSONObject("result").getInt("width") > 0)
+        assertEquals("permission_required", rpc(browser, "back").getJSONObject("error").getString("code"))
+        click("打开完整浏览器"); await { browser.state.value.overlayFrame == null }
+        find("Browser laboratory")
+        assertSame(view, browser.webView)
+        assertNull(browser.state.value.authorizedClient)
+    }
+
     @Test fun permissionDisclosureAndDeniedReturnNeverOpenAnOverlay() = fixture { activity, browser, _ ->
         permission(false)
         click("DSH"); click("浏览器小窗")
@@ -306,7 +331,7 @@ class BrowserOverlayPresentationTest {
             await { browser.state.value.overlayFrame == null && !browser.state.value.backgroundEnabled }
             SystemClock.sleep(750)
             assertFalse("No stale browser notification after STOP", notifications.activeNotifications.any { it.id == 2 })
-            assertNull(browser.state.value.authorizedClient); assertFalse(snapshot(browser).getBoolean("ok"))
+            assertNull(browser.state.value.authorizedClient); assertTrue(snapshot(browser).getBoolean("ok")); assertFalse(rpc(browser, "back").getBoolean("ok"))
         } finally {
             shell("wm density ${originalDensity ?: "reset"}")
             SystemClock.sleep(750)
@@ -344,12 +369,12 @@ class BrowserOverlayPresentationTest {
         await { browser.state.value.url.endsWith("#keyboard7") && !browser.state.value.loading }
         assertEquals(browser.connection.clientId, browser.state.value.authorizedClient)
         tap("Browser laboratory")
-        find("收回 AI 浏览器权限？"); assertFalse(snapshot(browser).getBoolean("ok"))
+        find("收回 AI 浏览器操作权限？"); assertTrue(snapshot(browser).getBoolean("ok")); assertFalse(rpc(browser, "back").getBoolean("ok"))
         screenshot("system-overlay-takeover.png")
         click("继续交给 AI"); await { !browser.state.value.takeoverRequested }; assertTrue(snapshot(browser).getBoolean("ok"))
-        tap("Browser laboratory"); click("撤销 AI 权限")
+        tap("Browser laboratory"); click("撤销 AI 操作权限")
         assertNull(browser.state.value.authorizedClient); assertFalse(browser.library.state.value.aiControlEnabled)
-        click("交回 AI 浏览器权限"); assertTrue(snapshot(browser).getBoolean("ok"))
+        click("交回 AI 浏览器操作权限"); assertTrue(snapshot(browser).getBoolean("ok"))
         permission(false)
         await("Revoking the OS permission must remove the overlay") { browser.state.value.overlayFrame == null }
         assertTrue(browser.state.value.backgroundEnabled); assertTrue(snapshot(browser).getBoolean("ok"))

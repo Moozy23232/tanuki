@@ -195,11 +195,11 @@ fun AgentBrowserPage(controller: AgentBrowserController, modifier: Modifier = Mo
             if (!fullscreen) Surface(color = MaterialTheme.colorScheme.surfaceContainerLow) {
                 Row(Modifier.fillMaxWidth().padding(start = 12.dp, end = 4.dp).heightIn(min = 44.dp), verticalAlignment = Alignment.CenterVertically) {
                     Icon(if (state.authorizedClient != null) Icons.Default.SmartToy else Icons.Default.Person, null, Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary)
-                    Text(if (state.takeoverRequested) "AI 已暂停，等待你的选择" else if (state.authorizedClient != null) "AI 可操作 · 点网页可临时接管"
-                        else state.idleReturnSeconds?.let { "你在操作 · ${it}秒未操作后交回 AI" } ?: "AI 权限已撤销 · 不自动恢复",
+                    Text(if (state.privatePage) "登录授权页 · AI 不可查看或操作" else if (state.takeoverRequested) "AI 可查看，操作已暂停" else if (state.authorizedClient != null) "AI 可操作 · 点网页可临时接管"
+                        else state.idleReturnSeconds?.let { "你在操作 · ${it}秒未操作后交回 AI" } ?: "AI 可查看 · 操作权已收回",
                         Modifier.weight(1f).padding(horizontal = 8.dp), style = MaterialTheme.typography.labelSmall)
-                    TextButton(onClick = { if (state.authorizedClient != null) controller.takeControl() else controller.grantConnection() }, enabled = !state.closed && !state.rendererFailed) {
-                        Text(if (state.authorizedClient != null) "撤销 AI 权限" else "交回 AI", style = MaterialTheme.typography.labelLarge)
+                    TextButton(onClick = { if (state.authorizedClient != null) controller.takeControl() else controller.grantConnection() }, enabled = !state.closed && !state.rendererFailed && !state.privatePage) {
+                        Text(if (state.authorizedClient != null) "撤销 AI 操作权限" else "交回 AI", style = MaterialTheme.typography.labelLarge)
                     }
                 }
             }
@@ -306,12 +306,12 @@ fun AgentBrowserPage(controller: AgentBrowserController, modifier: Modifier = Mo
             }
             "权限与后台" -> Column(Modifier.verticalScroll(rememberScrollState()).padding(bottom = bottomInset).padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 Text(if (state.authorizedClient != null) "AI 可以操作浏览器" else "浏览器由你控制", style = MaterialTheme.typography.titleMedium)
-                Text("默认允许当前工具连接操作所有已打开页面。触碰网页先暂停 AI；临时接管后，30 秒没有点击、滑动或输入会交回 AI。切页与后台不会另外撤销权限。")
-                FilledTonalButton(onClick = { if (state.authorizedClient != null) controller.takeControl() else controller.grantConnection() }) { Text(if (state.authorizedClient != null) "撤销 AI 权限" else "交回 AI") }
+                Text("当前工具连接可查看普通网页，默认允许操作；登录授权临时页始终不向 AI 开放。触碰网页先暂停 AI；临时接管后，30 秒没有点击、滑动或输入会交回 AI。切页与后台不会另外撤销权限。")
+                FilledTonalButton(onClick = { if (state.authorizedClient != null) controller.takeControl() else controller.grantConnection() }) { Text(if (state.authorizedClient != null) "撤销 AI 操作权限" else "交回 AI") }
                 Text("显式撤销会记住你的选择，不因空闲、切页或重启自动交回。提交、付款、发布等业务操作仍需另外确认。", style = MaterialTheme.typography.bodySmall)
                 HorizontalDivider()
                 Text(if (state.backgroundEnabled) "后台运行已开启" else "后台运行已停止", style = MaterialTheme.typography.titleSmall)
-                Text("后台通知可收回 AI 权限或停止浏览器及下载，不会停止 DSH。Android 仍可能限制后台网络或回收进程。", style = MaterialTheme.typography.bodySmall)
+                Text("后台通知可收回 AI 操作权或停止浏览器及下载，不会停止 DSH。Android 仍可能限制后台网络或回收进程。", style = MaterialTheme.typography.bodySmall)
                 if (onShowOverlay != null) {
                     HorizontalDivider()
                     Text("系统悬浮窗", style = MaterialTheme.typography.titleSmall)
@@ -387,10 +387,10 @@ fun AgentBrowserPage(controller: AgentBrowserController, modifier: Modifier = Mo
                 else -> showPage(name)
             }
         }) }
-    if (state.takeoverRequested && state.overlayFrame == null) AlertDialog(onDismissRequest = { controller.resolveTakeover(false) }, title = { Text("收回 AI 浏览器权限？") },
+    if (state.takeoverRequested && state.overlayFrame == null) AlertDialog(onDismissRequest = { controller.resolveTakeover(false) }, title = { Text("收回 AI 浏览器操作权限？") },
         text = { Column {
-            Text("AI 已暂停，这次点击尚未执行。临时接管期间 AI 不能读取或控制网页；30 秒未操作会自动交回。")
-            TextButton(onClick = controller::takeControl) { Text("撤销 AI 权限") }
+            Text("AI 操作已暂停，这次点击尚未执行。临时接管期间 AI 可查看网页，不能点击、输入或导航；30 秒未操作会自动交回操作权。")
+            TextButton(onClick = controller::takeControl) { Text("撤销 AI 操作权限") }
         } },
         confirmButton = { TextButton(onClick = { controller.resolveTakeover(true) }) { Text("临时接管") } },
         dismissButton = { TextButton(onClick = { controller.resolveTakeover(false) }) { Text("继续交给 AI") } })

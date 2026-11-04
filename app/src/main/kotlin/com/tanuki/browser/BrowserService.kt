@@ -23,13 +23,13 @@ class BrowserService : Service() {
         super.onCreate()
         getSystemService(NotificationManager::class.java).createNotificationChannel(
             NotificationChannel("browser", "浏览器后台运行", NotificationManager.IMPORTANCE_LOW))
-        startForeground(2, notification("浏览器后台运行 · AI 未授权"))
+        startForeground(2, notification("浏览器后台运行 · AI 可查看，未获操作权"))
         controller?.let { browser ->
             browser.setBackgroundEnabled(true)
             scope.launch {
                 combine(browser.state, browser.library.state) { state, library ->
                     val active = library.downloads.firstOrNull { it.status in setOf("等待中", "下载中") }
-                    val control = when { state.takeoverRequested -> "AI 已暂停，等待接管选择"; state.authorizedClient != null -> "AI 已授权，可后台操作"; else -> "AI 未授权" }
+                    val control = when { state.takeoverRequested -> "AI 已暂停，等待接管选择"; state.authorizedClient != null -> "AI 已获操作权，可后台操作"; else -> "AI 可查看，未获操作权" }
                     Triple("${if (state.overlayFrame != null) "悬浮窗 · " else ""}${state.tabs.size} 个页面 · $control", active, state.overlayFrame != null)
                 }.distinctUntilChanged().collect { (text, active, hasOverlay) ->
                     // Moving/resizing a window must not flood NotificationManager every pointer frame.
@@ -44,7 +44,7 @@ class BrowserService : Service() {
         return Notification.Builder(this, "browser").setSmallIcon(android.R.drawable.ic_menu_view)
             .setContentTitle("${getString(R.string.app_name)} 浏览器").setContentText(text).setStyle(Notification.BigTextStyle().bigText(text + (download?.let { "\n${it.name} · ${it.status}" } ?: "")))
             .setContentIntent(open).setOngoing(true).setOnlyAlertOnce(true)
-            .addAction(Notification.Action.Builder(null, "撤销 AI 授权", action("REVOKE", 22)).build())
+            .addAction(Notification.Action.Builder(null, "撤销 AI 操作授权", action("REVOKE", 22)).build())
             .apply { if (hasOverlay) addAction(Notification.Action.Builder(null, "关闭悬浮窗", action(HIDE_OVERLAY, 24)).build()) }
             .addAction(Notification.Action.Builder(null, "停止后台浏览器", action("STOP", 23)).build())
             .apply { if (download != null) setProgress(100, if (download.total > 0) (100.0 * download.received / download.total).toInt().coerceIn(0, 100) else 0, download.total <= 0) }.build()

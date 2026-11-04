@@ -139,12 +139,14 @@ internal enum class TanukiGlyph { Home, Terminal, Layers, Settings, Folder, File
 fun TanukiUi(model: TanukiUiModel, callbacks: TanukiUiCallbacks, browserView: WebView,
              filesPage: @Composable (Modifier, Dp) -> Unit = { _, _ -> },
              agentBrowserPage: @Composable (Modifier, Boolean, (Boolean) -> Unit, (() -> Unit)?, Dp) -> Unit = { _, _, _, _, _ -> }, browserRequest: Boolean = false,
-             browserAuthorized: Boolean = false, browserOpenRequest: Int = 0) {
+             browserAuthorized: Boolean = false, browserOpenRequest: Int = 0, browserAvailable: Boolean = false) {
     var tab by rememberSaveable(key = "tanuki-navigation-5") { mutableIntStateOf(0) }
     val pageStates = rememberSaveableStateHolder()
     var fullscreen by rememberSaveable { mutableStateOf(false) }
     var browserFullscreen by rememberSaveable { mutableStateOf(false) }
     val activeFullscreen = (fullscreen && tab == 1) || (browserFullscreen && tab == 3)
+    // 用户查看浏览器不依赖 AI 授权；无可用浏览器时不显示无法打开的入口。
+    val showBrowserStatus = tab != 3 && (browserAuthorized || (browserAvailable && tab == 1))
     var floatingBrowser by rememberSaveable { mutableStateOf(false) }
     fun navigate(index: Int) {
         if (index == 3) { callbacks.openBrowser(); floatingBrowser = false }
@@ -216,18 +218,20 @@ fun TanukiUi(model: TanukiUiModel, callbacks: TanukiUiCallbacks, browserView: We
                                 TextButton(onClick = { navigate(3) }) { Text("查看请求") }
                             }
                         }
-                        if (browserAuthorized && tab != 3) Surface(
+                        if (showBrowserStatus) Surface(
                             color = MaterialTheme.colorScheme.secondaryContainer,
                             contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
                         ) {
                             Row(Modifier.fillMaxWidth().then(if (tab == 1 && !browserRequest) Modifier.statusBarsPadding() else Modifier).padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Text("AI 已获浏览器权限 · 后台有效", Modifier.weight(1f), style = MaterialTheme.typography.labelMedium)
-                                TextButton(onClick = callbacks.revokeBrowser) { Text("撤销 AI") }
+                                Text(if (browserAuthorized) "AI 已获浏览器操作权 · 后台有效" else "AI 可查看 · 你在操作",
+                                    Modifier.weight(1f), style = MaterialTheme.typography.labelMedium)
+                                TextButton(onClick = { navigate(3) }) { Text("查看浏览器") }
+                                if (browserAuthorized) TextButton(onClick = callbacks.revokeBrowser) { Text("撤销 AI") }
                             }
                         }
                         OperationBanner(s, model.transfers, onCancel = { callbacks.command("CANCEL") },
                             modifier = if (tab == 3 && activeFullscreen) Modifier.displayCutoutPadding().statusBarsPadding()
-                                else if (tab == 3 || (tab == 1 && !browserRequest && !browserAuthorized)) Modifier.statusBarsPadding() else Modifier)
+                                else if (tab == 3 || (tab == 1 && !browserRequest && !showBrowserStatus)) Modifier.statusBarsPadding() else Modifier)
                     }
                 }, bottomBar = {
                     if (floatingNavigation) Column(

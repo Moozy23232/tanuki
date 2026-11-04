@@ -179,8 +179,8 @@ class FilesBrowserPresentationTest {
                 assertTrue(rpc("navigate", JSONObject().put("url", page.url)).getBoolean("ok"))
                 await { controller.state.value.url == page.url && !controller.state.value.loading }
                 find("Browser fixture"); screenshot("browser-controlled-page.png")
-                click("撤销 AI 权限"); assertNull(controller.state.value.authorizedClient)
-                assertFalse(rpc("snapshot").getBoolean("ok"))
+                click("撤销 AI 操作权限"); assertNull(controller.state.value.authorizedClient)
+                assertTrue(rpc("snapshot").getBoolean("ok")); assertFalse(rpc("back").getBoolean("ok"))
                 assertTrue(rpc("request_control").getBoolean("ok")); click("交回 AI")
                 click("文件"); await { !controller.state.value.visible }
                 assertEquals(client, controller.state.value.authorizedClient)
@@ -188,7 +188,7 @@ class FilesBrowserPresentationTest {
                 click("浏览器"); find("Browser fixture")
                 assertEquals(page.url, controller.state.value.url)
                 assertEquals(client, controller.state.value.authorizedClient)
-                click("撤销 AI 权限"); assertNull(controller.state.value.authorizedClient)
+                click("撤销 AI 操作权限"); assertNull(controller.state.value.authorizedClient)
                 click("浏览器菜单"); click("历史记录"); find("Browser fixture"); screenshot("browser-history.png"); click("返回浏览器")
                 click("设置"); find("返回上一页"); click("返回上一页"); find("Browser fixture")
             }

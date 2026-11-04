@@ -38,6 +38,7 @@ import com.tanuki.ui.TanukiUiCallbacks
 import com.tanuki.ui.TanukiUiModel
 import com.tanuki.update.Release
 import com.tanuki.web.DshWebView
+import com.tanuki.web.DshFileChooser
 import com.tanuki.web.OriginPolicy
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -79,8 +80,7 @@ class MainActivity : ComponentActivity() {
     private var pendingDownload: String? = null
     private var pendingBlob: File? = null
     private val chooser = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-        val uris = android.webkit.WebChromeClient.FileChooserParams.parseResult(result.resultCode, result.data)
-        filesCallback?.onReceiveValue(uris); filesCallback = null
+        finishDshFiles(result.resultCode, result.data)
     }
     private val importFiles = registerForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
         if (uris.isNotEmpty()) lifecycleScope.launch(Dispatchers.IO) {
@@ -136,7 +136,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         consumeBrowserIntent(intent)
         browser = DshWebView(this, manager,
-            chooser = { intent, callback -> filesCallback?.onReceiveValue(null); filesCallback = callback; chooser.launch(intent) },
+            chooser = ::chooseDshFiles,
             download = { url, name ->
                 if (pendingDownload == null && pendingBlob == null) { pendingDownload = url; downloadFile.launch(name) }
                 else manager.event("请先完成当前文件保存")
@@ -287,6 +287,7 @@ class MainActivity : ComponentActivity() {
                     browserOpenRequest = browserOpenRequest,
                     browserRequest = browserFlags.first,
                     browserAuthorized = browserFlags.second,
+                    browserAvailable = agentBrowser != null,
                     filesPage = { modifier, bottomInset ->
                         WorkspaceFilesPage(workspaceFiles,
                             onImport = { importFiles.launch(arrayOf("*/*")) },
@@ -535,12 +536,40 @@ class MainActivity : ComponentActivity() {
     }
     override fun onPause() { agentBrowser?.setVisible(false); super.onPause() }
     override fun onDestroy() {
-        filesCallback?.onReceiveValue(null)
+        val callback = filesCallback
+        filesCallback = null
+        callback?.onReceiveValue(null)
         browserBackgroundHost?.let { agentBrowser?.detachBackgroundHost(it) }
         browserBackgroundHost = null
         // The application and foreground browser service own tabs/RPC, not this Activity.
         browser.destroy()
         super.onDestroy()
+    }
+
+    private fun chooseDshFiles(intent: Intent, callback: ValueCallback<Array<Uri>>) {
+        // 上一个系统选择器尚未返回时，拒绝新请求，避免旧结果串到新网页。
+        if (filesCallback != null) { callback.onReceiveValue(null); return }
+        filesCallback = callback
+        try { chooser.launch(intent) }
+        catch (_: android.content.ActivityNotFoundException) { cancelDshFiles() }
+        catch (_: SecurityException) { cancelDshFiles() }
+    }
+
+    private fun finishDshFiles(resultCode: Int, data: Intent?) {
+        val callback = filesCallback
+        filesCallback = null
+        val uris = runCatching { DshFileChooser.result(resultCode, data) }.getOrNull()
+        if (resultCode == RESULT_OK && (callback == null || uris == null)) {
+            android.widget.Toast.makeText(this, "未能取得附件，页面可能已重建，请重新选择文件", android.widget.Toast.LENGTH_LONG).show()
+        }
+        callback?.onReceiveValue(uris)
+    }
+
+    private fun cancelDshFiles() {
+        val callback = filesCallback
+        filesCallback = null
+        callback?.onReceiveValue(null)
+        android.widget.Toast.makeText(this, "无法打开系统文件选择器，请稍后重试", android.widget.Toast.LENGTH_LONG).show()
     }
 
     private suspend fun importProjectFiles(uris: List<Uri>) = manager.mutation.withLock {

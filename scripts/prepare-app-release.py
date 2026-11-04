@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """用户确认版本后生成指定渠道的 APK、应用更新清单和对应源码；不创建 tag、不上传。"""
 import argparse
+from contextlib import contextmanager
 import hashlib
 import json
 import os
@@ -9,6 +10,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -38,6 +40,32 @@ def digest(path):
         for block in iter(lambda: source.read(1024 * 1024), b""):
             hasher.update(block)
     return hasher.hexdigest()
+
+
+def verified_options(apk, sha256):
+    if (apk is None) != (sha256 is None):
+        raise ValueError("--verified-apk 和 --verified-apk-sha256 必须同时提供")
+    if sha256 is not None and not re.fullmatch(r"[0-9a-fA-F]{64}", sha256):
+        raise ValueError("已验证 APK 必须提供完整的 SHA-256")
+    return sha256.lower() if sha256 is not None else None
+
+
+@contextmanager
+def verified_copy(apk, sha256):
+    expected = verified_options(apk, sha256)
+    if apk is None:
+        yield None
+        return
+    source = Path(apk)
+    if not source.is_file() or not 1 <= source.stat().st_size <= 256 * 1024 * 1024:
+        raise ValueError("已验证 APK 必须是 1 字节至 256MiB 的文件")
+    # 先固定待封装字节，再核对哈希和 APK 身份；后续构建改写原路径不会替换已测包。
+    with tempfile.TemporaryDirectory(prefix="tanuki-verified-apk-") as temporary:
+        staged = Path(temporary) / "verified.apk"
+        shutil.copyfile(source, staged)
+        if not 1 <= staged.stat().st_size <= 256 * 1024 * 1024 or digest(staged) != expected:
+            raise ValueError("已验证 APK 的实际 SHA-256 与指定值不符")
+        yield staged
 
 
 def native_checksum(directory):
@@ -124,20 +152,33 @@ def main():
     parser.add_argument("--version", required=True, help="必须先向用户询问并确认，不能自行定版本")
     parser.add_argument("--version-code", required=True, type=int, help="高于所有已发布/安装的版本代码")
     parser.add_argument("--channel", required=True, choices=tuple(PACKAGES))
+    parser.add_argument("--verified-apk", type=Path, help="已完成测试的 APK；只封装固定字节，不重新构建")
+    parser.add_argument("--verified-apk-sha256", help="已测 APK 的完整 SHA-256，必须与 --verified-apk 成对提供")
     options = parser.parse_args()
     validate_version(options.version, options.version_code)
-    if options.channel == "production" and ("TANUKI_KEYSTORE" not in os.environ or "TANUKI_STORE_PASSWORD" not in os.environ):
+    pinned = verified_options(options.verified_apk, options.verified_apk_sha256)
+    if options.channel == "production" and pinned is None and ("TANUKI_KEYSTORE" not in os.environ or "TANUKI_STORE_PASSWORD" not in os.environ):
         raise ValueError("正式包需要仓库外已有密钥及环境密码；不能生成临时密钥冒充正式更新")
+    with verified_copy(options.verified_apk, pinned) as tested_apk:
+        prepare(options, tested_apk, pinned)
+
+
+def prepare(options, tested_apk, pinned):
     sdk = Path(os.environ.get("ANDROID_SDK_ROOT", Path.home() / "Library/Android/sdk"))
     directory = ROOT / "artifacts/releases" / options.version
     manifest = directory / "app-update.json"
     prior = prior_entries(directory, options.version, options.version_code, json.loads(manifest.read_text())) if manifest.exists() else []
     run([sys.executable, "scripts/check-handoff.py"], "确认最新交接")
-    command = ["env", f"TANUKI_VERSION_NAME={options.version}", f"TANUKI_VERSION_CODE={options.version_code}",
-               *build_command(options.channel, options.version, options.version_code)]
-    run(command, "构建指定渠道")
-    source_apk = build_apk_path(ROOT, options.channel, options.version)
+    if tested_apk is None:
+        command = ["env", f"TANUKI_VERSION_NAME={options.version}", f"TANUKI_VERSION_CODE={options.version_code}",
+                   *build_command(options.channel, options.version, options.version_code)]
+        run(command, "构建指定渠道")
+    else:
+        print("[复用已测 APK] 哈希已核对，继续验证实际身份与签名", flush=True)
+    source_apk = tested_apk or build_apk_path(ROOT, options.channel, options.version)
     entry = entry_for(source_apk, options.channel, options.version, options.version_code, **inspect_archive(source_apk, sdk))
+    if pinned is not None and entry["sha256"] != pinned:
+        raise ValueError("已验证 APK 在身份核验期间发生变化")
     for old in prior:
         if old["packageName"] != entry["packageName"]:
             old_channel = next((key for key, package in PACKAGES.items() if package == old["packageName"]), None)
@@ -145,7 +186,10 @@ def main():
                                                 **inspect_archive(directory / old["assetName"], sdk)) != old:
                 raise ValueError("已有其他渠道 APK 的实际身份与清单不符")
     directory.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(source_apk, directory / entry["assetName"])
+    destination = directory / entry["assetName"]
+    shutil.copy2(source_apk, destination)
+    if digest(destination) != entry["sha256"]:
+        raise ValueError("发布 APK 副本与已核验字节不一致")
     entries = [item for item in prior if item["packageName"] != entry["packageName"]] + [entry]
     manifest.write_text(json.dumps(dict(schemaVersion=1, packages=entries), ensure_ascii=False, indent=2) + "\n")
     run(["bash", "scripts/package-native-sources.sh"], "打包原生对应源码")

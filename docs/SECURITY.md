@@ -14,9 +14,13 @@ DSH 默认版可用 APK 预置的官方 npm 完整锁，APK 中固定 SHA-256 �
 
 管理 WebView 不允许 file:// 访问，没有命令 JavaScript Bridge，不忽略 TLS 错误。管理网页只允许当前精确 origin；新的本机预览端口不被当作管理 origin。第三方 Cookie 关闭；受支持的外部 HTTP(S) 链接在独立浏览器中新建页面，不在管理 WebView 中加载；管理 origin/端口与带管理 token 的外链不转交。官方 HTML 预览的源码声明使用不带 allow-same-origin 的 sandbox iframe；运行时仍需实际验证，不因代码声明就认定所有预览已隔离。当前严格的资源来源策略可能限制外部资源，详见测试结果。
 
-独立浏览器按用户最新选择默认授权应用当前连接，只向持有本机 capability 的工具开放受控操作，不是任意客户端可自行授权。触碰先暂停/使操作票据失效并询问，临时接管连续 30 秒无点击、滑动、键盘或输入则交回同一当前连接，交互重置计时；显式「撤销 AI 权限」持久保留，不被计时、后台或重启恢复。切到后台本身不会撤销。前台通知可收回或停止浏览器及下载。浏览器使用独立 WebView profile，与管理页的 Cookie/存储隔离；这是连接级能力，不是模型身份认证或恶意同 UID 代码沙箱。业务提交/付款等仍需另行确认。WebView 子资源回调不保证覆盖每一跳重定向，不能宣称已建立完整网络/SSRF隔离。具体边界与测试见 [浏览器工作区](BROWSER-WORKSPACE.md)。
+管理页附件由用户主动操作系统文档选择器提供。原生显式读取结果中的 `data` 和 `ClipData`，保留多选且去重，避免内核通用解析只读 `data` 时丢失附件。只允许当前管理 origin/运行身份发起，拒绝本 App 同 UID 的 provider、`file://` 和未知 provider；取消、导航、页面销毁后旧结果不可再次交付。不开放网页直接访问 content/file URI，不新增文件读取桥或全盘权限；`allowFileAccess`、`allowContentAccess` 仍关闭。
 
-DeepSeek 登录只对 `platform.deepseek.com/dsh/authorize` / `client_id=deepseek_harness` 的官方 HTTPS 入口建立短期单次票据；来源必须是当前已连接管理页，回调只到官方声明的当前 loopback origin `/callback`。授权使用独立、不给 AI 读取/截图/输入权限且不保存历史的临时标签。当前运行身份变化、超时、重放、其他路径/端口/来源均拒绝；完成时关闭临时标签，账号 Cookie 不复制到管理页。票据/授权码仅内存处理，不写日志；回调由原生对当前本机 host 发请求，不在独立浏览器加载管理 origin，仍由官方 host 校验 OAuth 状态和授权结果。预开空白窗口再异步导航/主框架异步授权不再被无手势拦截，但普通外链没有获得该特例。真实账号登录仍待验收。实现见 `web/DshOAuth.kt`、`web/DshWebView.kt` 与 `browser/AgentBrowserController.kt`。
+独立浏览器分别控制 AI 查看与操作。持有本机有效 capability 且通过客户端身份校验的工具可列出普通标签、读取当前普通页的文字/控件和截图；没有操作授权、用户临时接管或显式收回操作权时仍可查看。读取请求不能隐式切换标签；异步读取结束时重新核对页面身份和有效期，切页或导航前的旧结果不再交付。敏感 OAuth 临时标签从 AI 标签列表过滤，当前为敏感页时不提供活动标签 ID，也不允许 AI 读取、截图或操作；`status` 只提供连接元数据。
+
+AI 操作按用户最新选择默认授权应用当前连接，点击、输入、滚动、导航、标签变更、查找和缩放都需操作授权；RPC 不能自行授权。触碰先暂停操作、使旧操作票据失效并询问，临时接管连续 30 秒无点击、滑动、键盘或输入则交回同一当前连接，交互重置计时；显式撤销 AI 操作权限持久保留，不被计时、后台或重启恢复。切到后台本身不会撤销。前台通知可收回操作权或停止浏览器及下载。浏览器使用独立 WebView profile，与管理页的 Cookie/存储隔离；这是连接级能力，不是模型身份认证或恶意同 UID 代码沙箱。业务提交/付款等仍需另行确认。WebView 子资源回调不保证覆盖每一跳重定向，不能宣称已建立完整网络/SSRF隔离。具体边界与测试见 [浏览器工作区](BROWSER-WORKSPACE.md)。
+
+DeepSeek 登录只对 `platform.deepseek.com/dsh/authorize` / `client_id=deepseek_harness` 的官方 HTTPS 入口建立短期单次票据；来源必须是当前已连接管理页，回调只到官方声明的当前 loopback origin `/callback`。授权使用独立、不给 AI 读取/截图/输入权限、不向 AI 列出且不保存历史的临时标签。当前运行身份变化、超时、重放、其他路径/端口/来源均拒绝；完成时关闭临时标签，账号 Cookie 不复制到管理页。票据/授权码仅内存处理，不写日志；回调由原生对当前本机 host 发请求，不在独立浏览器加载管理 origin，仍由官方 host 校验 OAuth 状态和授权结果。预开空白窗口再异步导航/主框架异步授权不再被无手势拦截，但普通外链没有获得该特例。真实账号登录仍待验收。实现见 `web/DshOAuth.kt`、`web/DshWebView.kt` 与 `browser/AgentBrowserController.kt`。
 
 Tanuki APK 更新只使用本仓库 HTTPS 公开 Release/附件，不调用 GitHub API、不要求账号 token。清单不代替 APK 身份和证书校验；同包/同证书/更高版本/当前 Android、真实大小/SHA-256、归属缓存文件及安装前复验均须通过。应用更新与浏览器下载使用不同FileProvider子类，避免相同组件名的多authority冲突；更新非导出provider只共享专用缓存中的一个已复验APK，Intent使用ClipData和只读标记；安装器预读只向实际匹配APK的系统处理器补充只读授权，不预授权普通关联App、不开放provider或全缓存。补充授权最多10分钟，下一次更新操作/安装启动失败时收回；进程重建只恢复原URI到期回收，不重放安装，不保存凭据。Android系统安装器继续校验签名并等待用户授权；忙碌的DSH/安装/文件任务不允许进入安装。不自动卸载/清数据/换签名；详见[应用内更新](APP-UPDATES.md)。
 

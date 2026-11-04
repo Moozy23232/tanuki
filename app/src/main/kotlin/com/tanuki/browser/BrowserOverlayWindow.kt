@@ -123,7 +123,7 @@ internal class BrowserOverlayWindow(
     }
     private val statusRow = LinearLayout(context).apply { gravity = Gravity.CENTER_VERTICAL; setPadding(dp(12), 0, dp(4), 0) }
     private val status = label("", 12f).apply { maxLines = 2; ellipsize = TextUtils.TruncateAt.END }
-    private val controlButton = button("撤销", "撤销 AI 浏览器权限") {
+    private val controlButton = button("撤销", "撤销 AI 浏览器操作权限") {
         if (controller.state.value.authorizedClient != null) controller.takeControl() else controller.grantConnection()
     }
     private val progress = ProgressBar(context, null, android.R.attr.progressBarStyleHorizontal).apply { max = 100 }
@@ -281,14 +281,15 @@ internal class BrowserOverlayWindow(
             else -> "浏览器 · 你"
         }
         status.text = when {
-            state.takeoverRequested -> "AI 已暂停 · 等待接管选择"
+            state.privatePage -> "登录授权页 · AI 不可查看或操作"
+            state.takeoverRequested -> "AI 可查看 · 操作已暂停"
             state.authorizedClient != null -> "AI 可操作 · 点网页临时接管"
             state.idleReturnSeconds != null -> "你在操作 · ${state.idleReturnSeconds}秒未操作后交回 AI"
-            else -> "你在操作 · AI 无权读取"
+            else -> "你在操作 · AI 可查看"
         }
         controlButton.text = if (state.authorizedClient != null) "撤销" else "交回"
-        controlButton.contentDescription = if (state.authorizedClient != null) "撤销 AI 浏览器权限" else "交回 AI 浏览器权限"
-        controlButton.isEnabled = !state.rendererFailed && !state.takeoverRequested
+        controlButton.contentDescription = if (state.authorizedClient != null) "撤销 AI 浏览器操作权限" else "交回 AI 浏览器操作权限"
+        controlButton.isEnabled = !state.rendererFailed && !state.takeoverRequested && !state.privatePage
         back.isEnabled = state.canGoBack
         tabButton.text = "页面 ${state.tabs.size}"
         progress.progress = state.loadProgress
@@ -336,10 +337,10 @@ internal class BrowserOverlayWindow(
         fun action(value: String, action: () -> Unit) { items.addView(button(value, value, action), LinearLayout.LayoutParams(-1, dp(48))) }
         when {
             state.takeoverRequested -> {
-                text("收回 AI 浏览器权限？")
-                text("AI 已暂停，这次点击尚未执行。临时接管期间 AI 不能读取或控制网页；30 秒未操作会自动交回。")
+                text("收回 AI 浏览器操作权限？")
+                text("AI 操作已暂停，这次点击尚未执行。临时接管期间 AI 可查看网页，不能点击、输入或导航；30 秒未操作会自动交回操作权。")
                 action("临时接管") { controller.resolveTakeover(true) }
-                action("撤销 AI 权限") { controller.takeControl() }
+                action("撤销 AI 操作权限") { controller.takeControl() }
                 action("继续交给 AI") { controller.resolveTakeover(false) }
             }
             state.downloadRequest != null -> {

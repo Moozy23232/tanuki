@@ -10,6 +10,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parent.parent
 spec = importlib.util.spec_from_file_location("app_release", ROOT / "scripts/prepare-app-release.py")
@@ -71,6 +72,103 @@ class AppReleaseTests(unittest.TestCase):
         result = subprocess.run([sys.executable, str(ROOT / "scripts/prepare-app-release.py"), "--channel", "workspacecheck"], capture_output=True, text=True)
         self.assertNotEqual(0, result.returncode)
         self.assertIn("--version", result.stderr)
+
+    def test_verified_apk_requires_a_complete_paired_hash(self):
+        value = hashlib.sha256(self.apk.read_bytes()).hexdigest()
+        self.assertEqual(value, release.verified_options(self.apk, value.upper()))
+        self.assertIsNone(release.verified_options(None, None))
+        for apk, checksum in ((self.apk, None), (None, value), (self.apk, ""),
+                              (self.apk, "a" * 63), (self.apk, "g" * 64), (self.apk, value + "\n")):
+            with self.subTest(checksum=checksum), self.assertRaises(ValueError):
+                release.verified_options(apk, checksum)
+
+    def test_verified_apk_rejects_missing_empty_and_changed_files(self):
+        checksum = hashlib.sha256(self.apk.read_bytes()).hexdigest()
+        for path in (self.apk.with_name("missing.apk"), self.apk.parent):
+            with self.subTest(path=path.name), self.assertRaises(ValueError):
+                with release.verified_copy(path, checksum):
+                    self.fail("不应接受非文件")
+        for content in (b"", b"changed-apk"):
+            self.apk.write_bytes(content)
+            with self.subTest(content=content), self.assertRaises(ValueError):
+                with release.verified_copy(self.apk, checksum):
+                    self.fail("不应接受空文件或不匹配的字节")
+        with self.apk.open("wb") as output:
+            output.truncate(256 * 1024 * 1024 + 1)
+        with self.assertRaises(ValueError):
+            with release.verified_copy(self.apk, checksum):
+                self.fail("不应读取超出发布上限的文件")
+
+    def run_preparation(self, *, verified=True, metadata=None, replace_original=False):
+        original = self.apk.read_bytes()
+        root = self.apk.parent
+        calls = []
+        inspected = []
+        arguments = ["prepare-app-release.py", "--version", "0.1.1", "--version-code", "2", "--channel", "workspacecheck"]
+        if verified:
+            arguments += ["--verified-apk", str(self.apk), "--verified-apk-sha256", hashlib.sha256(original).hexdigest()]
+
+        def run(command, label, **kwargs):
+            calls.append(label)
+            if label == "构建指定渠道":
+                target = release.build_apk_path(root, "workspacecheck", "0.1.1")
+                target.parent.mkdir(parents=True)
+                target.write_bytes(original)
+            if label == "打包原生对应源码":
+                target = root / "artifacts/sources/native/Tanuki-native-corresponding-sources.tar.gz"
+                target.parent.mkdir(parents=True)
+                target.write_bytes(b"synthetic-native-source")
+            if label == "打包本次完整源码":
+                (root / "artifacts/sources/Tanuki-0.1.1-source.zip").write_bytes(b"synthetic-public-source")
+            return ""
+
+        def inspect(apk, sdk):
+            inspected.append(apk)
+            self.assertEqual(original, apk.read_bytes())
+            if verified:
+                self.assertNotEqual(self.apk, apk)
+            if replace_original:
+                self.apk.write_bytes(b"another-build-overwrote-the-original")
+                self.assertEqual(original, apk.read_bytes())
+            return metadata or self.metadata
+
+        with mock.patch.object(release, "ROOT", root), mock.patch.object(release, "run", side_effect=run), \
+                mock.patch.object(release, "inspect_archive", side_effect=inspect), mock.patch.object(sys, "argv", arguments), \
+                contextlib.redirect_stdout(io.StringIO()):
+            release.main()
+        return root / "artifacts/releases/0.1.1", original, calls, inspected
+
+    def test_verified_mode_packages_stable_tested_bytes_without_rebuilding(self):
+        bundle, expected, calls, inspected = self.run_preparation(replace_original=True)
+        self.assertNotIn("构建指定渠道", calls)
+        self.assertIn("确认最新交接", calls)
+        self.assertIn("打包原生对应源码", calls)
+        self.assertIn("打包本次完整源码", calls)
+        self.assertEqual(1, len(inspected))
+        self.assertFalse(inspected[0].exists(), "临时固定副本结束后应清理")
+        self.assertEqual(expected, (bundle / "Tanuki-0.1.1-workspacecheck-arm64-release.apk").read_bytes())
+        self.assertEqual(6, len(list(bundle.iterdir())))
+        checksums = (bundle / "RELEASE-SHA256SUMS").read_text()
+        self.assertIn(hashlib.sha256(expected).hexdigest(), checksums)
+
+    def test_verified_mode_still_rejects_wrong_actual_identity(self):
+        with self.assertRaises(ValueError):
+            self.run_preparation(metadata=self.metadata | {"actual_package": "com.tanuki.modern"})
+        self.assertFalse((self.apk.parent / "artifacts/releases/0.1.1/app-update.json").exists())
+
+    def test_default_preparation_still_runs_the_channel_build(self):
+        bundle, expected, calls, inspected = self.run_preparation(verified=False)
+        self.assertIn("构建指定渠道", calls)
+        self.assertEqual(release.build_apk_path(self.apk.parent, "workspacecheck", "0.1.1"), inspected[0])
+        self.assertEqual(expected, (bundle / "Tanuki-0.1.1-workspacecheck-arm64-release.apk").read_bytes())
+
+    def test_verified_cli_bad_hash_fails_before_external_tools(self):
+        arguments = ["prepare-app-release.py", "--version", "0.1.1", "--version-code", "2", "--channel", "workspacecheck",
+                     "--verified-apk", str(self.apk), "--verified-apk-sha256", "a" * 64]
+        with mock.patch.object(sys, "argv", arguments), mock.patch.object(release, "run") as run:
+            with self.assertRaises(ValueError):
+                release.main()
+            run.assert_not_called()
 
     def test_source_archive_keeps_confirmed_root_directory(self):
         spec = importlib.util.spec_from_file_location("source_package", ROOT / "scripts/package-source.py")

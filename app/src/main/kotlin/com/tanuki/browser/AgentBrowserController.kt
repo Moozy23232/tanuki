@@ -42,7 +42,7 @@ class BrowserConnection(val port: Int, val token: String, val clientId: String =
 data class BrowserTabInfo(val id: String, val url: String, val title: String, val loading: Boolean)
 data class BrowserState(
     val visible: Boolean = false, val pendingClient: String? = null, val authorizedClient: String? = null,
-    val control: String = "AI 未授权", val url: String = "", val title: String = "新页面",
+    val control: String = "AI 可查看，未获操作权", val url: String = "", val title: String = "新页面",
     val loading: Boolean = false, val canGoBack: Boolean = false, val canGoForward: Boolean = false,
     val error: String? = null, val closed: Boolean = false, val rendererFailed: Boolean = false,
     val operations: List<String> = emptyList(), val history: List<BrowserVisit> = emptyList(),
@@ -51,7 +51,7 @@ data class BrowserState(
     val backgroundEnabled: Boolean = false, val downloadRequest: BrowserDownloadRequest? = null,
     val notice: String? = null, val pageMode: String = BrowserPageMode.WINDOWS.name, val takeoverRequested: Boolean = false,
     val overlayFrame: BrowserOverlayFrame? = null, val overlayCollapsed: Boolean = false,
-    val idleReturnSeconds: Int? = null
+    val idleReturnSeconds: Int? = null, val privatePage: Boolean = false
 )
 data class BrowserVisit(val url: String, val title: String, val time: Long = System.currentTimeMillis())
 
@@ -388,7 +388,8 @@ class AgentBrowserController(private val context: Context, val library: BrowserL
         update { copy(url = tab.url, title = tab.title, loading = tab.loading, loadProgress = tab.progress, error = tab.error,
             rendererFailed = tab.gone, canGoBack = !tab.gone && tab.rendered?.canGoBack() == true, canGoForward = !tab.gone && tab.rendered?.canGoForward() == true,
             activeTab = tab.id, tabs = this@AgentBrowserController.tabs.map { BrowserTabInfo(it.id, it.url, it.title, it.loading) },
-            zoomPercent = tab.zoom, findQuery = tab.query, findIndex = tab.match, findCount = tab.matches, pageMode = tab.mode.name) }
+            zoomPercent = tab.zoom, findQuery = tab.query, findIndex = tab.match, findCount = tab.matches, pageMode = tab.mode.name,
+            privatePage = tab.privateLogin) }
     }
     private fun saveTabs() { if (tabs.isNotEmpty()) library.saveTabs(tabs.filterNot { it.privateLogin }.map { SavedBrowserTab(it.id, it.url, it.title, it.mode.name) }, selected) }
 
@@ -549,7 +550,7 @@ class AgentBrowserController(private val context: Context, val library: BrowserL
     }
     fun revoke() {
         uiThread(); cancelIdleReturn(); gate.revoke(); requestGeneration++; permit.set(null); invalidateDocument(); takeoverClient = null
-        update { copy(authorizedClient = null, pendingClient = null, takeoverRequested = false, idleReturnSeconds = null, control = "AI 权限已撤销，不自动恢复") }; log("用户收回浏览器权限")
+        update { copy(authorizedClient = null, pendingClient = null, takeoverRequested = false, idleReturnSeconds = null, control = "AI 可查看，操作权已收回且不自动恢复") }; log("用户收回浏览器权限")
     }
     private fun normalize(url: String): String {
         val value = url.trim()
@@ -758,9 +759,13 @@ class AgentBrowserController(private val context: Context, val library: BrowserL
         val method = request.opt("method") as? String ?: throw RpcFailure("invalid_method")
         val params = if (request.has("params")) request.opt("params") as? JSONObject ?: throw RpcFailure("invalid_params") else JSONObject()
         if (method !in setOf("status", "request_control", "navigate", "snapshot", "click", "type", "scroll", "screenshot", "back", "forward", "reload", "tabs", "new_tab", "select_tab", "close_tab", "find", "zoom")) throw RpcFailure("unknown_method")
+        val reading = method in setOf("tabs", "snapshot", "screenshot")
+        // 当前 capability 连接可查看普通网页；操作权和其他客户端仍由原生票据约束。
+        val observation = reading && normalized == connection.clientId
+        val documentRequest = method !in setOf("status", "request_control")
         val epoch = gate.epoch()
-        val ticket = if (method == "status" || method == "request_control") null else gate.ticket(normalized)
-        if (ticket != null && !operationBusy.compareAndSet(false, true)) throw RpcFailure("operation_busy")
+        val ticket = if (!documentRequest || observation) null else gate.ticket(normalized)
+        if (documentRequest && !operationBusy.compareAndSet(false, true)) throw RpcFailure("operation_busy")
         val result = CompletableFuture<JSONObject>()
         val active = AtomicBoolean(true)
         fun valid() = active.get() && gate.current(epoch) && (ticket == null || gate.valid(ticket))
@@ -788,14 +793,17 @@ class AgentBrowserController(private val context: Context, val library: BrowserL
                     result.complete(ok(JSONObject().put("pending", true)))
                 } else {
                     if (rendererGone) throw RpcFailure("browser_unavailable")
-                    log("代理操作：$method")
-                    execute(method, params, ticket!!) { value ->
+                    if (current.privateLogin && method != "tabs") throw RpcFailure("private_page")
+                    log(if (reading) "代理查看：$method" else "代理操作：$method")
+                    val completion: (Any) -> Unit = { value ->
                         result.complete(when {
                             !valid() -> error("permission_revoked")
                             value is JSONObject && value.has("error") -> error(value.getString("error"))
                             else -> ok(value)
                         })
                     }
+                    if (reading) readPage(method, params, completion)
+                    else execute(method, params, ticket!!, completion)
                 }
             } catch (e: RpcFailure) { result.complete(error(e.code)) }
               catch (_: Exception) { result.complete(error("operation_failed")) }
@@ -805,7 +813,39 @@ class AgentBrowserController(private val context: Context, val library: BrowserL
         catch (_: Exception) { throw RpcFailure("operation_timeout") }
         finally {
             active.set(false); main.removeCallbacks(task)
-            if (ticket != null) { permit.set(null); operationBusy.set(false) }
+            if (documentRequest) { permit.set(null); operationBusy.set(false) }
+        }
+    }
+
+    private fun readPage(method: String, params: JSONObject, done: (Any) -> Unit) {
+        // 查看不能顺带切换用户正在操作的页面；标签切换必须单独取得操作授权。
+        if (params.has("tabId")) {
+            val id = params.opt("tabId") as? String ?: throw RpcFailure("invalid_params")
+            if (id != selected) throw RpcFailure("tab_not_selected")
+        }
+        when (method) {
+            "tabs" -> done(JSONObject().put("activeTab", if (current.privateLogin) "" else selected)
+                .put("tabs", org.json.JSONArray(tabs.filterNot { it.privateLogin }.map {
+                    JSONObject().put("id", it.id).put("url", it.url).put("title", it.title)
+                })))
+            "screenshot" -> done(screenshot())
+            "snapshot" -> {
+                val document = documentId
+                val tab = current
+                val view = webView
+                val script = snapshotScript(params.optInt("offset", 0).coerceIn(0, 1_000_000),
+                    params.optInt("elementOffset", 0).coerceIn(0, 50_000))
+                view.evaluateJavascript(script) { raw ->
+                    if (stopped.get() || current !== tab || document != documentId || tab.privateLogin) {
+                        done(JSONObject().put("error", "stale_document")); return@evaluateJavascript
+                    }
+                    val value = try {
+                        if (raw.length > 160000) throw RpcFailure("result_too_large")
+                        JSONObject(raw)
+                    } catch (_: Exception) { JSONObject().put("error", "page_unavailable") }
+                    done(value)
+                }
+            }
         }
     }
 
@@ -819,10 +859,10 @@ class AgentBrowserController(private val context: Context, val library: BrowserL
         if (params.has("tabId") && method !in setOf("select_tab", "close_tab", "new_tab")) {
             val id = text("tabId", 64)
             if (tabs.none { it.id == id }) throw RpcFailure("tab_not_found")
+            if (tabs.any { it.id == id && it.privateLogin }) throw RpcFailure("private_page")
             selectTab(id)
         }
         when (method) {
-            "tabs" -> done(JSONObject().put("activeTab", selected).put("tabs", org.json.JSONArray(tabs.map { JSONObject().put("id", it.id).put("url", it.url).put("title", it.title) })))
             "new_tab" -> {
                 val url = if (params.has("url")) text("url", 8192) else null
                 if (url != null && !allowed(url)) throw RpcFailure("navigation_blocked")
@@ -830,7 +870,9 @@ class AgentBrowserController(private val context: Context, val library: BrowserL
             }
             "select_tab", "close_tab" -> {
                 val id = text("tabId", 64); if (tabs.none { it.id == id }) throw RpcFailure("tab_not_found")
-                if (method == "select_tab") selectTab(id) else closeTab(id); done(result.put("tabId", selected))
+                if (tabs.any { it.id == id && it.privateLogin }) throw RpcFailure("private_page")
+                if (method == "select_tab") selectTab(id) else closeTab(id)
+                done(result.put("tabId", if (current.privateLogin) "" else selected))
             }
             "find" -> { find(text("query", 200)); done(result) }
             "zoom" -> {
@@ -846,15 +888,12 @@ class AgentBrowserController(private val context: Context, val library: BrowserL
             "back" -> { if (webView.canGoBack()) webView.goBack(); done(result) }
             "forward" -> { if (webView.canGoForward()) webView.goForward(); done(result) }
             "reload" -> { if (!allowed(webView.url.orEmpty())) throw RpcFailure("navigation_blocked"); webView.reload(); done(result) }
-            "screenshot" -> done(screenshot())
             "scroll" -> {
                 val dx = params.opt("dx") as? Number ?: throw RpcFailure("invalid_params")
                 val dy = params.opt("dy") as? Number ?: throw RpcFailure("invalid_params")
                 if (!dx.toDouble().isFinite() || !dy.toDouble().isFinite() || kotlin.math.abs(dx.toDouble()) > 10000 || kotlin.math.abs(dy.toDouble()) > 10000) throw RpcFailure("invalid_params")
                 webView.scrollBy(dx.toInt(), dy.toInt()); done(result)
             }
-            "snapshot" -> evaluate(snapshotScript(params.optInt("offset", 0).coerceIn(0, 1_000_000),
-                params.optInt("elementOffset", 0).coerceIn(0, 50_000)), ticket, done)
             "click", "type" -> {
                 if (text("documentId", 64) != documentId) throw RpcFailure("stale_document")
                 val id = text("elementId", 80)
