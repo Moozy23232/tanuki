@@ -29,6 +29,7 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.tanuki.storage.FileLocation
 import com.tanuki.storage.WorkspaceFileManager
@@ -42,7 +43,7 @@ import java.util.Locale
 @Composable
 fun WorkspaceFilesPage(
     manager: WorkspaceFileManager, onImport: () -> Unit, onExport: () -> Unit,
-    modifier: Modifier = Modifier, runtimeRunning: Boolean = false, onStop: () -> Unit = {}
+    modifier: Modifier = Modifier, runtimeRunning: Boolean = false, onStop: () -> Unit = {}, bottomInset: Dp = 0.dp
 ) {
     var location by rememberSaveable { mutableStateOf(FileLocation.WORKSPACE) }
     val files = remember(manager, location) { manager.inLocation(location) }
@@ -229,7 +230,7 @@ fun WorkspaceFilesPage(
             }
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 if (shown.isEmpty() && !busy && error == null && !runtimeRunning) Column(
-                    Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(32.dp),
+                    Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(start = 32.dp, end = 32.dp, top = 32.dp, bottom = 32.dp + bottomInset),
                     verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically),
                 ) {
                     TanukiIcon(TanukiGlyph.Folder, modifier = Modifier.size(40.dp), tint = MaterialTheme.colorScheme.primary)
@@ -238,14 +239,14 @@ fun WorkspaceFilesPage(
                 } else if (grid) LazyVerticalGrid(
                     GridCells.Adaptive(160.dp),
                     Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(12.dp),
+                    contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 12.dp, bottom = 12.dp + bottomInset),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     gridItems(shown, key = { it.path }) { entry -> row(entry, true) }
                 } else LazyColumn(
                     Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                    contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 8.dp + bottomInset),
                     verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
                     items(shown, key = { it.path }) { entry -> row(entry, false) }

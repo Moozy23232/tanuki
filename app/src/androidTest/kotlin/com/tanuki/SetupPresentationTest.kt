@@ -14,12 +14,20 @@ import android.view.accessibility.AccessibilityNodeInfo
 import android.webkit.WebView
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
@@ -35,6 +43,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.test.platform.app.InstrumentationRegistry
@@ -168,7 +177,8 @@ class SetupPresentationTest {
         (config.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
 
     private fun mount(activity: MainActivity, state: MutableState<TanukiUiModel>, rec: Recorder,
-                      browser: WebView, night: Boolean, fontScale: Float) {
+                      browser: WebView, night: Boolean, fontScale: Float,
+                      filesPage: @Composable (Modifier, Dp) -> Unit = { _, _ -> }) {
         val config = Configuration(activity.resources.configuration).apply {
             uiMode = (uiMode and Configuration.UI_MODE_NIGHT_MASK.inv()) or
                 (if (night) Configuration.UI_MODE_NIGHT_YES else Configuration.UI_MODE_NIGHT_NO)
@@ -180,7 +190,7 @@ class SetupPresentationTest {
                 CompositionLocalProvider(LocalConfiguration provides config, LocalDensity provides Density(density, fontScale)) {
                     TanukiTheme { Surface(Modifier.fillMaxSize()) {
                         val cb = remember { callbacks(state, rec, activity) }
-                        TanukiUi(state.value, cb, browser)
+                        TanukiUi(state.value, cb, browser, filesPage = filesPage)
                     } }
                 }
             }
@@ -856,6 +866,13 @@ class SetupPresentationTest {
             find("进入全屏")
             beforeShot = run { SystemClock.sleep(300); screenshot("setup-webview-before.png") }
             assertTrue(before.w > 0 && before.h > 0 && boundsOf(web).width() > 0 && boundsOf(web).height() > 0)
+            val navigation = glassTabBounds("文件")
+            assertTrue("DSH must extend behind the floating navigation", boundsOf(web).contains(navigation))
+            // 合成网页的中间绿带应透过未选页签；避开图标、文字和边缘高光。
+            val pixel = beforeShot!!.getPixel(navigation.centerX(), navigation.top + (2 * context.resources.displayMetrics.density).toInt())
+            assertTrue("DSH document pixels must show through the navigation",
+                android.graphics.Color.green(pixel) > android.graphics.Color.red(pixel) + 30 &&
+                    android.graphics.Color.green(pixel) > android.graphics.Color.blue(pixel) + 30)
             click("进入全屏"); find("退出全屏")
             val full = awaitViewport(web) { it.h > before.h }
             fullShot = run { SystemClock.sleep(300); screenshot("setup-webview-fullscreen.png") }
@@ -878,6 +895,59 @@ class SetupPresentationTest {
             assertEquals("timeOrigin must not change after exiting fullscreen", origin, after.timeOrigin, 0.0)
         } finally { beforeShot?.recycle(); fullShot?.recycle(); afterShot?.recycle(); cleanup(activity) }
     }
+    @Test fun filesListExtendsBehindNavigationAndScrollsTailClearWithoutReloadingDsh() {
+        val activity = launch(); cancelSourceTests()
+        var overlapShot: Bitmap? = null; var tailShot: Bitmap? = null
+        try {
+            val browser = browserOf(activity); awaitProbe(browser)
+            val web = browser.view
+            val state = mutableStateOf(model(snapshot = runningSnapshot()))
+            var openedTail = false
+            // 只挂载合成列表，验证真实页面槽与尾部避让；不读取工作区或调用模型。
+            mount(activity, state, Recorder(), web, night = false, fontScale = 1f) { modifier, bottomInset ->
+                LazyColumn(modifier, contentPadding = PaddingValues(bottom = bottomInset)) {
+                    items(40) { index ->
+                        Text("合成文件 $index", Modifier.fillMaxWidth().height(64.dp).background(Color.Green)
+                            .clickable { openedTail = index == 39 }.padding(16.dp), color = Color.Black)
+                    }
+                }
+            }
+            click("DSH"); awaitAttached(activity, web)
+            loadHtml(web, VIEWPORT_HTML, "typeof window.__setupMarker==='string'")
+            val before = awaitViewport(web)
+            click("文件")
+            val navigation = glassTabBounds("DSH")
+            val listBounds = Rect().also(nodes().first { it.isScrollable }::getBoundsInScreen)
+            assertTrue("Files content must extend behind the floating navigation", listBounds.contains(navigation))
+            SystemClock.sleep(700)
+            overlapShot = screenshot("files-floating-navigation-overlap.png")
+            val pixel = overlapShot!!.getPixel(navigation.centerX(), navigation.top + (2 * context.resources.displayMetrics.density).toInt())
+            assertTrue("Native list pixels must show through the navigation",
+                android.graphics.Color.green(pixel) > android.graphics.Color.red(pixel) + 30 &&
+                    android.graphics.Color.green(pixel) > android.graphics.Color.blue(pixel) + 30)
+            assertFalse("The tail must start off screen", nodes().any { matches(it, "合成文件 39") && it.isVisibleToUser })
+            find("合成文件 39")
+            // 找到末项可能只露出一部分，再向前滚到尾部，让 contentPadding 完全进入视口。
+            nodes().firstOrNull { it.isScrollable }?.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)
+            instrumentation.waitForIdleSync(); SystemClock.sleep(500)
+            val tail = Rect().also(find("合成文件 39")::getBoundsInScreen)
+            assertTrue("The whole final row must remain above navigation: $tail / $navigation",
+                tail.top >= listBounds.top && tail.bottom <= navigation.top &&
+                    tail.height() >= (64 * context.resources.displayMetrics.density).toInt() - 1)
+            tailShot = screenshot("files-floating-navigation-tail.png")
+            assertTrue("The final row text must actually paint", hasMultipleColors(tailShot!!, tail))
+            GlassTouch(tail.exactCenterX(), tail.exactCenterY()).use { touch ->
+                SystemClock.sleep(60); touch.finish()
+            }
+            instrumentation.runOnMainSync { assertTrue("The exposed final row must accept a real tap", openedTail) }
+            click("DSH"); awaitAttached(activity, web)
+            val after = awaitViewport(web)
+            assertSame(web, attachedWebView(activity, web))
+            assertEquals("Files tab round trip must not reload DSH", before.timeOrigin, after.timeOrigin, 0.0)
+            assertEquals(before.marker, after.marker)
+        } finally { overlapShot?.recycle(); tailShot?.recycle(); cleanup(activity) }
+    }
+
     @Test fun appThemeResourceDrivesWebViewColorSchemeWithoutGlobalChanges() {
         val activity = launch(); cancelSourceTests(); val themed = ArrayList<WebView>()
         try {

@@ -137,7 +137,7 @@ internal enum class TanukiGlyph { Home, Terminal, Layers, Settings, Folder, File
 
 @Composable
 fun TanukiUi(model: TanukiUiModel, callbacks: TanukiUiCallbacks, browserView: WebView,
-             filesPage: @Composable (Modifier) -> Unit = {},
+             filesPage: @Composable (Modifier, Dp) -> Unit = { _, _ -> },
              agentBrowserPage: @Composable (Modifier, Boolean, (Boolean) -> Unit, (() -> Unit)?, Dp) -> Unit = { _, _, _, _, _ -> }, browserRequest: Boolean = false,
              browserAuthorized: Boolean = false, browserOpenRequest: Int = 0) {
     var tab by rememberSaveable(key = "tanuki-navigation-5") { mutableIntStateOf(0) }
@@ -176,9 +176,9 @@ fun TanukiUi(model: TanukiUiModel, callbacks: TanukiUiCallbacks, browserView: We
     val layoutDirection = LocalLayoutDirection.current
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val wide = maxWidth >= 840.dp
-        val browserUnderNavigation = tab == 3 && !wide && !activeFullscreen
-        // 只捕获原生滚动内容；网页保留原渲染链，旧系统使用高可读性的材质降级。
-        val nativeGlass = !wide && (tab == 0 || tab == 4) && Build.VERSION.SDK_INT >= 33
+        val floatingNavigation = !wide && !activeFullscreen && WindowInsets.ime.getBottom(LocalDensity.current) == 0
+        // 各页共用浮动布局；只录制原生内容，网页维持原生绘制。
+        val nativeGlass = floatingNavigation && tab in setOf(0, 2, 4) && Build.VERSION.SDK_INT >= 33
         Row(Modifier.fillMaxSize()) {
             if (wide && !activeFullscreen) NavigationRail(containerColor = Color.Transparent,
                 modifier = Modifier.fillMaxHeight().width(96.dp)) {
@@ -230,7 +230,7 @@ fun TanukiUi(model: TanukiUiModel, callbacks: TanukiUiCallbacks, browserView: We
                                 else if (tab == 3 || (tab == 1 && !browserRequest && !browserAuthorized)) Modifier.statusBarsPadding() else Modifier)
                     }
                 }, bottomBar = {
-                    if (!wide && !activeFullscreen) Column(
+                    if (floatingNavigation) Column(
                         Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 16.dp, vertical = 8.dp)
                     ) {
                         GlassNavigationBar(
@@ -238,39 +238,33 @@ fun TanukiUi(model: TanukiUiModel, callbacks: TanukiUiCallbacks, browserView: We
                             labels = destinations.map { it.title },
                             onSelect = ::navigate,
                             backdrop = if (nativeGlass) navigationBackdrop else null,
-                            translucentBackground = browserUnderNavigation,
+                            translucentBackground = floatingNavigation && !nativeGlass,
                         ) { index, tint ->
                             TanukiIcon(destinations[index].glyph, destinations[index].title, tint = tint)
                         }
                     }
                 }) { padding ->
-                val pageModifier = Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding)
+                val bottomInset = if (floatingNavigation) padding.calculateBottomPadding() else 0.dp
+                // 录制位于inset之前，和导航使用同一坐标原点；尾部避让交由各页的可滚动内容处理。
+                val pageModifier = Modifier.fillMaxSize()
+                    .then(if (nativeGlass) Modifier.layerBackdrop(navigationBackdrop) else Modifier)
+                    .padding(start = padding.calculateStartPadding(layoutDirection), top = padding.calculateTopPadding(),
+                        end = padding.calculateEndPadding(layoutDirection), bottom = if (floatingNavigation) 0.dp else padding.calculateBottomPadding())
+                    .consumeWindowInsets(padding)
                 when (tab) {
                     1 -> DshPage(model, callbacks, browserView, pageModifier, home = { tab = 0 },
-                        fullscreen = activeFullscreen, onFullscreen = { fullscreen = it }, settings = ::openSettings,
+                        fullscreen = activeFullscreen, onFullscreen = { fullscreen = it }, settings = ::openSettings, bottomInset = bottomInset,
                         openBrowserWindow = {
                             if (callbacks.openBrowserOverlay != null) callbacks.openBrowserOverlay.invoke()
                             else { if (!floatingBrowser) callbacks.openBrowser(); floatingBrowser = !floatingBrowser }
                         })
-                    2 -> pageStates.SaveableStateProvider("files") { filesPage(pageModifier) }
+                    2 -> pageStates.SaveableStateProvider("files") { filesPage(pageModifier, bottomInset) }
                     3 -> pageStates.SaveableStateProvider("browser") {
-                        val browserModifier = if (browserUnderNavigation) Modifier.fillMaxSize().padding(
-                            start = padding.calculateStartPadding(layoutDirection), top = padding.calculateTopPadding(),
-                            end = padding.calculateEndPadding(layoutDirection),
-                        ).consumeWindowInsets(padding) else pageModifier
-                        agentBrowserPage(browserModifier, browserFullscreen, { browserFullscreen = it }, ::openSettings,
-                            if (browserUnderNavigation) padding.calculateBottomPadding() else 0.dp)
+                        agentBrowserPage(pageModifier, browserFullscreen, { browserFullscreen = it }, ::openSettings, bottomInset)
                     }
                     else -> key(tab, settingsSection.takeIf { tab == 4 }) {
-                        // 原生内容可滚到玻璃后方，尾部仍预留导航高度，避免最后一项被遮挡。
-                        // 先录制再加 inset，使图层与全局坐标使用同一原点，避免玻璃采到上方错位内容。
-                        val nativeModifier = if (nativeGlass) Modifier.fillMaxSize().layerBackdrop(navigationBackdrop).padding(
-                            start = padding.calculateStartPadding(layoutDirection),
-                            top = padding.calculateTopPadding(),
-                            end = padding.calculateEndPadding(layoutDirection),
-                        ).consumeWindowInsets(padding) else pageModifier
-                        val bottomSpace = 32.dp + if (nativeGlass) padding.calculateBottomPadding() else 0.dp
-                        Box(nativeModifier.background(tanukiPageBrush())) {
+                        val bottomSpace = 32.dp + bottomInset
+                        Box(pageModifier.background(tanukiPageBrush())) {
                             Column(Modifier.align(Alignment.TopCenter).widthIn(max = 760.dp).fillMaxSize().tanukiEnter().imePadding()
                                 .verticalScroll(rememberScrollState()).padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = bottomSpace),
                                 verticalArrangement = Arrangement.spacedBy(28.dp)) {
@@ -656,7 +650,7 @@ private fun SettingsGroup(title: String, content: @Composable ColumnScope.() -> 
 
 @Composable
 private fun DshPage(model: TanukiUiModel, c: TanukiUiCallbacks, browser: WebView, modifier: Modifier,
-                    home: () -> Unit, fullscreen: Boolean, onFullscreen: (Boolean) -> Unit, settings: () -> Unit,
+                    home: () -> Unit, fullscreen: Boolean, onFullscreen: (Boolean) -> Unit, settings: () -> Unit, bottomInset: Dp,
                     openBrowserWindow: () -> Unit) {
     val s = model.snapshot
     val density = LocalDensity.current
@@ -685,7 +679,8 @@ private fun DshPage(model: TanukiUiModel, c: TanukiUiCallbacks, browser: WebView
                     browser.visibility = if (showBrowser) android.view.View.VISIBLE else android.view.View.INVISIBLE
                 })
         }
-        if (!showBrowser) Column(Modifier.fillMaxSize().padding(top = topInset).verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        if (!showBrowser) Column(Modifier.fillMaxSize().padding(top = topInset).verticalScroll(rememberScrollState())
+            .padding(start = 20.dp, end = 20.dp, top = 20.dp, bottom = 20.dp + bottomInset), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             TanukiCard {
                 TanukiIcon(TanukiGlyph.Terminal, tint = MaterialTheme.colorScheme.primary)
                 Text(when {

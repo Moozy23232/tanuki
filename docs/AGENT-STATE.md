@@ -4,7 +4,7 @@
 
 ## 最新交接
 
-[浏览器布局与标签入口](handoffs/20261104-1125-browser-chrome.md)在 `feat/browser-layout` 按用户要求分效果提交，未推送；旧分支未变。目前先拆出紧凑浏览器/地址栏，已验证的各页浮动布局随后独立提交；标签图标与取消12页限制待实施。组合版本前轮双debug/AndroidTest、97 JVM、15项专项通过，modern lint0错误/71警告/1提示，不能当作拆分提交或后续标签改动的新测结果。
+[浏览器布局与标签入口](handoffs/20261104-1125-browser-chrome.md)在 `feat/browser-layout` 按用户要求分效果提交，未推送；旧分支未变。紧凑浏览器/地址栏与各页浮动布局已分两笔，两步各自modern/AndroidTest编译通过；产品/测试源码恢复后与前轮15项通过版本逐字节相同。标签图标与取消12页限制待实施。前轮组合双debug/AndroidTest、97 JVM、15项专项、modern lint0错误/71警告/1提示不计本轮设备重跑。
 
 [液态玻璃分支同步与精简](handoffs/20261104-0949-rebase-liquid-main.md)已完成：根目录 `feat/liquid-glass-navigation` 基于 `f02d60b`，颜色提交 `c6b0adf`；用户已授权将液态玻璃精简差异统一提交/推送该功能分支，执行结果以最终回执为准。保留0.1.3/5与安装安全修复，适配SDK36可空信息；精简生成清单、重复交接及许可证全文。本轮双debug/AndroidTest、97 JVM、API36独立包8项回归通过，modern lint0错误/71警告/1提示；本机AVD为 `Tanuki_UI_API36`。以下为上游历史，不计本轮新测。
 

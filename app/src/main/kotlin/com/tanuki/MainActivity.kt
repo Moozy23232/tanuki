@@ -287,10 +287,10 @@ class MainActivity : ComponentActivity() {
                     browserOpenRequest = browserOpenRequest,
                     browserRequest = browserFlags.first,
                     browserAuthorized = browserFlags.second,
-                    filesPage = { modifier ->
+                    filesPage = { modifier, bottomInset ->
                         WorkspaceFilesPage(workspaceFiles,
                             onImport = { importFiles.launch(arrayOf("*/*")) },
-                            onExport = { confirmation = "EXPORT" }, modifier = modifier,
+                            onExport = { confirmation = "EXPORT" }, modifier = modifier, bottomInset = bottomInset,
                             runtimeRunning = s.service in setOf(ServiceState.STARTING, ServiceState.RUNNING, ServiceState.STOPPING),
                             onStop = { confirmation = "STOP" })
                     },
