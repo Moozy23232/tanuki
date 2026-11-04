@@ -28,7 +28,7 @@ data class BrowserDownload(val id: String, val name: String, val url: String, va
 data class SavedBrowserTab(val id: String, val url: String, val title: String, val mode: String = BrowserPageMode.WINDOWS.name)
 data class BrowserLibraryState(val history: List<BrowserVisit> = emptyList(), val bookmarks: List<BrowserBookmark> = emptyList(),
     val downloads: List<BrowserDownload> = emptyList(), val tabs: List<SavedBrowserTab> = emptyList(), val selectedTab: String? = null,
-    val searchEngine: String = "BING", val aiControlEnabled: Boolean = true)
+    val searchEngine: String = "BING", val aiControlEnabled: Boolean = true, val avoidBottomControls: Boolean = false)
 data class BrowserDownloadRequest(val url: String, val name: String, val mime: String, val size: Long)
 
 class BrowserLibrary(context: Context, val transfers: FileTransfers = FileTransfers { android.os.SystemClock.elapsedRealtime() }) {
@@ -66,7 +66,7 @@ class BrowserLibrary(context: Context, val transfers: FileTransfers = FileTransf
             },
             tabs = rows("tabs").map { SavedBrowserTab(it.getString("id"), it.optString("url"), it.optString("title"), BrowserPageMode.from(it.optString("mode")).name) },
             selectedTab = json.optString("selectedTab").ifBlank { null }, searchEngine = BrowserSearchEngine.from(json.optString("searchEngine")).name,
-            aiControlEnabled = json.optBoolean("aiControlEnabled", true))
+            aiControlEnabled = json.optBoolean("aiControlEnabled", true), avoidBottomControls = json.optBoolean("avoidBottomControls", false))
     }.getOrElse { BrowserLibraryState() }
     @Synchronized private fun update(persist: Boolean = true, block: (BrowserLibraryState) -> BrowserLibraryState) {
         val previous = mutable.value
@@ -89,6 +89,7 @@ class BrowserLibrary(context: Context, val transfers: FileTransfers = FileTransf
                     .put("status", it.status).put("received", it.received).put("total", it.total).put("time", it.time).put("error", it.error).put("image", it.image) }))
                 .put("tabs", JSONArray(s.tabs.map { JSONObject().put("id", it.id).put("url", it.url).put("title", it.title).put("mode", it.mode) }))
                 .put("selectedTab", s.selectedTab).put("searchEngine", s.searchEngine).put("aiControlEnabled", s.aiControlEnabled)
+                .put("avoidBottomControls", s.avoidBottomControls)
             val atomic = AtomicFile(metadata); val stream = atomic.startWrite()
             try { android.system.Os.fchmod(stream.fd, 384); stream.write(json.toString().toByteArray()); atomic.finishWrite(stream) }
             catch (error: Throwable) { atomic.failWrite(stream); throw error }
@@ -104,6 +105,7 @@ class BrowserLibrary(context: Context, val transfers: FileTransfers = FileTransf
         it.copy(bookmarks = (listOf(next) + it.bookmarks.filterNot { b -> b.url == url }).take(500))
     }
     fun setSearchEngine(engine: BrowserSearchEngine) = update { it.copy(searchEngine = engine.name) }
+    fun setAvoidBottomControls(enabled: Boolean) = update { it.copy(avoidBottomControls = enabled) }
     fun setAiControlEnabled(enabled: Boolean) { update { it.copy(aiControlEnabled = enabled) }; flush() }
     fun removeBookmark(id: String) = update { it.copy(bookmarks = it.bookmarks.filterNot { b -> b.id == id }) }
     private fun change(id: String, persist: Boolean = true, block: (BrowserDownload) -> BrowserDownload) = update(persist) {

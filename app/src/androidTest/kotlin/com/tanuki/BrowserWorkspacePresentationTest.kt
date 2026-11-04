@@ -120,6 +120,7 @@ class BrowserWorkspacePresentationTest {
                 browser.state.value.tabs.filter { tab -> before.tabs.none { it.id == tab.id } }.forEach { browser.closeTab(it.id) }
                 browser.selectTab(before.activeTab)
                 browser.library.setSearchEngine(BrowserSearchEngine.from(library.searchEngine))
+                browser.library.setAvoidBottomControls(library.avoidBottomControls)
                 browser.library.setAiControlEnabled(library.aiControlEnabled)
                 if (before.authorizedClient == browser.connection.clientId) {
                     browser.setVisible(true); browser.grantConnection(); browser.setVisible(false)
@@ -138,7 +139,8 @@ class BrowserWorkspacePresentationTest {
         await { !browser.state.value.loading && browser.state.value.title == "Browser laboratory" }
         find("Browser laboratory")
     }
-    @Test fun compactChromeSharesTitleRowAndWebViewportClearsNavigation() = fixture { _, browser, server ->
+    @Test fun compactChromeSharesTitleRowAndWebPixelsShowBehindNavigation() = fixture { _, browser, server ->
+        ui { browser.library.setAvoidBottomControls(false) }
         openPage(browser, server.base + "/")
         fun bounds(node: AccessibilityNodeInfo) = Rect().also(node::getBoundsInScreen)
         val address = bounds(find("网址输入框"))
@@ -154,7 +156,7 @@ class BrowserWorkspacePresentationTest {
         var nav = find("DSH")
         while (!nav.isClickable) nav = requireNotNull(nav.parent)
         val bottomTab = bounds(nav)
-        assertTrue("WebView viewport must end above floating navigation", location[1] + web.height <= bottomTab.top)
+        assertTrue("WebView must extend behind floating navigation", location[1] + web.height >= bottomTab.bottom)
         val origin = js(browser, "performance.timeOrigin")
         fun paint(color: String): Bitmap {
             js(browser, "document.documentElement.style.background='$color';document.body.style.background='$color'")
@@ -163,12 +165,15 @@ class BrowserWorkspacePresentationTest {
         }
         val red = paint("rgb(255,32,32)"); val blue = paint("rgb(32,32,255)")
         try {
-            // 取安全视口的底部像素，既核验网页实际绘制，也不要求控件落入导航遮挡区。
-            val x = bottomTab.centerX(); val y = location[1] + web.height - (2 * context.resources.displayMetrics.density).toInt()
+            // 同时核验导航前方及背后的真实网页像素，不以DOM存在替代绘制结果。
+            val x = bottomTab.centerX(); val y = bottomTab.top - (2 * context.resources.displayMetrics.density).toInt()
             assertTrue("Red web pixels paint at the safe viewport bottom", android.graphics.Color.red(red.getPixel(x, y)) - android.graphics.Color.red(blue.getPixel(x, y)) > 25)
             assertTrue("Blue web pixels paint at the safe viewport bottom", android.graphics.Color.blue(blue.getPixel(x, y)) - android.graphics.Color.blue(red.getPixel(x, y)) > 25)
+            val behind = bottomTab.top + (2 * context.resources.displayMetrics.density).toInt()
+            assertTrue("Red web pixels must also show behind navigation", android.graphics.Color.red(red.getPixel(x, behind)) - android.graphics.Color.red(blue.getPixel(x, behind)) > 25)
+            assertTrue("Blue web pixels must also show behind navigation", android.graphics.Color.blue(blue.getPixel(x, behind)) - android.graphics.Color.blue(red.getPixel(x, behind)) > 25)
         } finally { red.recycle(); blue.recycle() }
-        screenshot("browser-compact-safe-viewport.png")
+        screenshot("browser-compact-overlay.png")
         click("页面总览"); find("新建页面"); click("返回浏览器")
         click("设置"); find("返回上一页"); click("返回上一页")
         assertSame(web, browser.webView); assertEquals(origin, js(browser, "performance.timeOrigin"))
@@ -176,9 +181,26 @@ class BrowserWorkspacePresentationTest {
         assertSame(web, browser.webView); assertEquals(origin, js(browser, "performance.timeOrigin"))
     }
 
-    @Test fun fixedBottomHttpControlsAcceptRealTouchesWithoutChangingNavigation() = fixture { _, browser, _ ->
+    @Test fun optionalBottomAvoidanceKeepsFixedControlsClickableWithoutReload() = fixture { _, browser, _ ->
         FixedBottomControlsFixture.Server().use { server ->
+            ui { browser.library.setAvoidBottomControls(false) }
             openPage(browser, server.url)
+            val view = browser.webView
+            val origin = js(browser, "performance.timeOrigin")
+            val floatingHeight = view.height
+            fun toggleAvoidance() {
+                click("浏览器菜单"); click("浏览器设置"); click("通用")
+                click("避让网页底部控件"); click("返回浏览器"); click("返回浏览器")
+                val painted = CountDownLatch(1)
+                ui { view.postVisualStateCallback(1, object : android.webkit.WebView.VisualStateCallback() {
+                    override fun onComplete(requestId: Long) { painted.countDown() }
+                }) }
+                assertTrue("Resized document must finish drawing", painted.await(10, TimeUnit.SECONDS))
+            }
+            toggleAvoidance()
+            assertTrue(browser.library.state.value.avoidBottomControls)
+            await { view.height < floatingHeight }
+            assertSame(view, browser.webView); assertEquals(origin, js(browser, "performance.timeOrigin"))
             ui { browser.takeControl() }
             instrumentation.waitForIdleSync(); SystemClock.sleep(300)
             fun browserSelected(): Boolean = nodes().filter { it.text?.toString() == "浏览器" || it.contentDescription?.toString() == "浏览器" }
@@ -209,6 +231,11 @@ class BrowserWorkspacePresentationTest {
                 val selected = browserSelected()
                 assertTrue("Fixed-bottom $id must receive its center touch ($x,$y), event=$count, browserSelected=$selected", count == 1 && selected)
             }
+            toggleAvoidance()
+            assertFalse(browser.library.state.value.avoidBottomControls)
+            await { view.height == floatingHeight }
+            assertSame(view, browser.webView); assertEquals(origin, js(browser, "performance.timeOrigin"))
+            assertEquals(1, (js(browser, "window.__fixedBottomEvents.send") as Number).toInt())
         }
     }
 

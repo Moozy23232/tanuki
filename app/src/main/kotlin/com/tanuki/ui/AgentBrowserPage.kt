@@ -19,6 +19,7 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -43,6 +44,7 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.TextRange
@@ -234,12 +236,13 @@ fun AgentBrowserPage(controller: AgentBrowserController, modifier: Modifier = Mo
                         view.setLayerType(if (fullscreen) android.view.View.LAYER_TYPE_HARDWARE else originalLayer, null)
                         onDispose { view.setLayerType(originalLayer, null) }
                     }
-                    // 网页视口避开浮动导航，不能让固定在页面底部的输入框或按钮被原生页签截获。
+                    // 默认网页透显；需要操作网页固定底栏时，由用户显式开启视口避让。
                     AndroidView(factory = { viewContext ->
                         (view.parent as? ViewGroup)?.removeView(view)
                         view.importantForAccessibility = android.view.View.IMPORTANT_FOR_ACCESSIBILITY_AUTO
                         FrameLayout(viewContext).apply { clipChildren = true; clipToPadding = true; addView(view, FrameLayout.LayoutParams(-1, -1)) }
-                    }, onRelease = { host -> controller.park(view, host) }, modifier = Modifier.fillMaxSize().padding(bottom = bottomInset).clipToBounds())
+                    }, onRelease = { host -> controller.park(view, host) }, modifier = Modifier.fillMaxSize()
+                        .padding(bottom = if (library.avoidBottomControls) bottomInset else 0.dp).clipToBounds())
                 }
                 if (state.overlayFrame == null && state.url.isEmpty() && !state.rendererFailed) Column(Modifier.fillMaxSize().padding(bottom = bottomInset).verticalScroll(rememberScrollState()).padding(24.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -298,6 +301,12 @@ fun AgentBrowserPage(controller: AgentBrowserController, modifier: Modifier = Mo
             "通用" -> Column(Modifier.verticalScroll(rememberScrollState()).padding(bottom = bottomInset)) {
                 BrowserPreference("搜索引擎", BrowserSearchEngine.from(library.searchEngine).title, Icons.Default.Search) { dialog = "搜索引擎" }
                 BrowserPreference("当前页面显示模式", BrowserPageMode.from(state.pageMode).title, Icons.Default.Devices) { selectedMode = BrowserPageMode.from(state.pageMode); dialog = "页面显示模式" }
+                ListItem(modifier = Modifier.padding(horizontal = 4.dp).toggleable(library.avoidBottomControls,
+                    role = Role.Switch, onValueChange = controller.library::setAvoidBottomControls),
+                    headlineContent = { Text("避让网页底部控件") },
+                    supportingContent = { Text("开启后预留底部空间，避免网页自己的固定输入框或按钮被导航遮挡") },
+                    leadingContent = { Icon(Icons.Default.KeyboardArrowUp, null) },
+                    trailingContent = { Switch(library.avoidBottomControls, onCheckedChange = null) })
             }
             "数据管理" -> Column(Modifier.verticalScroll(rememberScrollState()).padding(bottom = bottomInset)) {
                 BrowserPreference("历史记录", "${library.history.size} 条记录", Icons.Default.History) { showPage("历史记录") }
