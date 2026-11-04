@@ -138,7 +138,7 @@ class BrowserWorkspacePresentationTest {
         await { !browser.state.value.loading && browser.state.value.title == "Browser laboratory" }
         find("Browser laboratory")
     }
-    @Test fun compactChromeSharesTitleRowAndWebPixelsShowBehindNavigation() = fixture { _, browser, server ->
+    @Test fun compactChromeSharesTitleRowAndWebViewportClearsNavigation() = fixture { _, browser, server ->
         openPage(browser, server.base + "/")
         fun bounds(node: AccessibilityNodeInfo) = Rect().also(node::getBoundsInScreen)
         val address = bounds(find("网址输入框"))
@@ -154,7 +154,7 @@ class BrowserWorkspacePresentationTest {
         var nav = find("DSH")
         while (!nav.isClickable) nav = requireNotNull(nav.parent)
         val bottomTab = bounds(nav)
-        assertTrue("WebView extends behind floating navigation", location[1] + web.height >= bottomTab.bottom)
+        assertTrue("WebView viewport must end above floating navigation", location[1] + web.height <= bottomTab.top)
         val origin = js(browser, "performance.timeOrigin")
         fun paint(color: String): Bitmap {
             js(browser, "document.documentElement.style.background='$color';document.body.style.background='$color'")
@@ -163,17 +163,53 @@ class BrowserWorkspacePresentationTest {
         }
         val red = paint("rgb(255,32,32)"); val blue = paint("rgb(32,32,255)")
         try {
-            // 取未选页签的上内边距；只有真实网页透过背板时，此处才随网页颜色改变。
-            val x = bottomTab.centerX(); val y = bottomTab.top + (2 * context.resources.displayMetrics.density).toInt()
-            assertTrue("Red web pixels show through the navigation", android.graphics.Color.red(red.getPixel(x, y)) - android.graphics.Color.red(blue.getPixel(x, y)) > 25)
-            assertTrue("Blue web pixels show through the navigation", android.graphics.Color.blue(blue.getPixel(x, y)) - android.graphics.Color.blue(red.getPixel(x, y)) > 25)
+            // 取安全视口的底部像素，既核验网页实际绘制，也不要求控件落入导航遮挡区。
+            val x = bottomTab.centerX(); val y = location[1] + web.height - (2 * context.resources.displayMetrics.density).toInt()
+            assertTrue("Red web pixels paint at the safe viewport bottom", android.graphics.Color.red(red.getPixel(x, y)) - android.graphics.Color.red(blue.getPixel(x, y)) > 25)
+            assertTrue("Blue web pixels paint at the safe viewport bottom", android.graphics.Color.blue(blue.getPixel(x, y)) - android.graphics.Color.blue(red.getPixel(x, y)) > 25)
         } finally { red.recycle(); blue.recycle() }
-        screenshot("browser-compact-overlay.png")
+        screenshot("browser-compact-safe-viewport.png")
         click("页面总览"); find("新建页面"); click("返回浏览器")
         click("设置"); find("返回上一页"); click("返回上一页")
         assertSame(web, browser.webView); assertEquals(origin, js(browser, "performance.timeOrigin"))
         click("浏览器进入全屏"); find("浏览器退出全屏"); click("浏览器退出全屏"); find("网址输入框")
         assertSame(web, browser.webView); assertEquals(origin, js(browser, "performance.timeOrigin"))
+    }
+
+    @Test fun fixedBottomHttpControlsAcceptRealTouchesWithoutChangingNavigation() = fixture { _, browser, _ ->
+        FixedBottomControlsFixture.Server().use { server ->
+            openPage(browser, server.url)
+            ui { browser.takeControl() }
+            instrumentation.waitForIdleSync(); SystemClock.sleep(300)
+            fun browserSelected(): Boolean = nodes().filter { it.text?.toString() == "浏览器" || it.contentDescription?.toString() == "浏览器" }
+                .any { candidate ->
+                    var node: AccessibilityNodeInfo? = candidate
+                    var selected = false
+                    while (node != null) { selected = selected || node.isSelected; node = node.parent }
+                    selected
+                }
+            assertTrue("Browser navigation must be selected before the touch", browserSelected())
+            screenshot("browser-fixed-bottom-before.png")
+            for ((id, event) in listOf("fixed-send" to "send", "fixed-more" to "more", "fixed-input" to "focus")) {
+                val geometry = js(browser, "(()=>{const r=document.getElementById('$id').getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2,w:innerWidth,h:innerHeight}})()") as JSONObject
+                val location = IntArray(2)
+                var width = 0; var height = 0
+                ui { browser.webView.getLocationOnScreen(location); width = browser.webView.width; height = browser.webView.height }
+                val x = location[0] + geometry.getDouble("x").toFloat() * width / geometry.getDouble("w").toFloat()
+                val y = location[1] + geometry.getDouble("y").toFloat() * height / geometry.getDouble("h").toFloat()
+                // 只从 DOM 读取坐标；事件必须经过屏幕触摸，不能用无障碍或 JS 点击绕过导航。
+                val down = SystemClock.uptimeMillis()
+                for (action in listOf(MotionEvent.ACTION_DOWN, MotionEvent.ACTION_UP)) {
+                    val touch = MotionEvent.obtain(down, SystemClock.uptimeMillis(), action, x, y, 0)
+                    try { instrumentation.sendPointerSync(touch) } finally { touch.recycle() }
+                    SystemClock.sleep(60)
+                }
+                instrumentation.waitForIdleSync(); SystemClock.sleep(250)
+                val count = (js(browser, "window.__fixedBottomEvents.$event") as Number).toInt()
+                val selected = browserSelected()
+                assertTrue("Fixed-bottom $id must receive its center touch ($x,$y), event=$count, browserSelected=$selected", count == 1 && selected)
+            }
+        }
     }
 
     @Test fun revokedAiKeepsDshBrowserEntryAndUserPageVisible() = fixture { _, browser, server ->

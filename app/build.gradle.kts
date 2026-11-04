@@ -13,8 +13,8 @@ android {
         applicationId = "com.tanuki"
         minSdk = 26
         targetSdk = 34
-        versionCode = configuredCode ?: 6
-        versionName = requestedVersion ?: "0.1.4"
+        versionCode = configuredCode ?: 7
+        versionName = requestedVersion ?: "0.1.5"
         ndk { abiFilters += "arm64-v8a" }
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

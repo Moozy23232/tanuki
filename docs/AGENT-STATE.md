@@ -1,30 +1,29 @@
 # Tanuki 当前状态
 
-先读本页、[当前交接](handoffs/20261104-1535-pr3-conflicts.md)、[上手指南](AGENT-QUICKSTART.md)和任务相关专题；安全边界见[SECURITY](SECURITY.md)，历史验证集中在[TEST-REPORT](TEST-REPORT.md)。
+先读本页、[当前交接](handoffs/20261104-1632-pr-release-015.md)、[上手指南](AGENT-QUICKSTART.md)及任务专题；安全边界见[SECURITY](SECURITY.md)，验证依据见[TEST-REPORT](TEST-REPORT.md)。
 
-## 当前交付
+## 当前交付与验证
 
-- `feat/browser-layout` 已解决 PR #3 与 main/a2a5913 的冲突，保留已发布三笔功能提交，通过合并更新，不强推；按用户授权合并提交/普通推送，结果以远端回执为准，不修改main或旧功能分支。
-- 当前源码版本 **0.1.4 / code6**。保留上游ClipData上传、AI查看/操作分离及发布工具；浏览器紧凑布局、首焦全选、各页浮动导航、标签图标/角标和取消12页限制均保留。
-- 本轮新跑：modern/compat debug、modern AndroidTest、**97 JVM、22项API36专项全部通过**；modern lint **0错误/71警告/1提示**。不是上游44项release验证重跑，也不是全产品验收。
-- 按用户要求收拢过程文档：已完成交接的必要结果归入测试现状，仅保留当前记录、模板和印章。`licenses` 与最新main一致，不把主线许可资料算成本PR新增；不删除必要许可/署名。
+本轮目标 **0.1.5/code7**，整合[PR #3](https://github.com/leezzou/tanuki/pull/3)固定head c95fa9f，merge-base为最新main a2a5913，ahead6/behind0；保留0.1.4的ClipData上传及AI查看/操作分离。新增真实触摸先发现浮动导航遮挡网页底部按钮，已给浏览器/DSH视口预留导航安全区；全屏及键盘隐藏导航时不保留该区，同一WebView/文档保持。
+
+本轮实际release/AndroidTest、compat debug构建成功，**97 JVM通过；release lint0错误/71警告/1Hint；49项宿主回归通过；57个不同设备用例最终全部通过**。阶段与中间失败见TEST-REPORT；两项旧文字像素检查已适配图标，测试包重编未改变产品APK。实际候选 **10,370,132字节**、SHA-256 `a21a8ae304c08857b1881f17668f442cab461d14c3c283208ecd5e4aa12dbdf2`。覆盖前旧0.1.4合成私有标记读回并清理，未重种。PR作者API36/22项与前轮0.1.4/44项均独立列历史，不混算。
+
+先完成全部验证、交接/过期记录清理及公开检查，再按本轮授权一次普通push main；推送成功后用上述已测字节verified封装0.1.5六附件。实际Git提交/远端与产物散列由最终回执、`RELEASE-SHA256SUMS`和`app-update.json`核对，不为了回填提交自身再制造后续提交。旧0.1.4完整附件保持原样。
 
 ## 环境与数据边界
 
-- 本机根目录作业，不新建worktree。复用 `Tanuki_UI_API36` / `emulator-5554`，ARM64/API36/WebView133；其他历史记录的API34设备不属于本机当前目标。
-- 本轮仅覆盖独立验证包 `com.tanuki.modern.uipolish.workspacecheck`，0.1.4/6 debug；正常开发/上游发布目标 `com.tanuki.modern.workspacecheck` 不覆盖。标准 `.modern` 是不同包名，用户卸载的旧安装不恢复。
-- 不清数据、不卸载、不恢复快照；有安装或真实任务时不覆盖安装/运行仪器测试。保持官方DSH UI/模型/Skills、TLS/哈希/审批；PRoot不是恶意代码沙箱。
-- AI合法当前连接可看普通当前页，操作仍需授权；读取不切页，OAuth临时页不给AI读写或列出。临时接管空闲30秒归还，显式撤销操作权持续有效，后台不自行撤销。
+- 当前目标包com.tanuki.modern.workspacecheck；同开发证书，min26/target34、compileSdk36。本轮已测0.1.5/7的non-debuggable候选，正式密钥未使用。
+- 本机复用 **Pixel_7_API_34_arm64 / emulator-5572**，ARM64/API34/WebView159，专用合成数据；无node/proot/apt/dpkg/真实任务。PR作者的Tanuki_UI_API36/emulator-5554仅为其历史验证，不是本机目标。
+- 不卸载/清数据/恢复快照，不恢复用户已卸载的旧.modern；不同构建共用输出路径，安装前核验实际包名、签名、versionCode与instrumentation target。
+- 合法当前工具连接无操作权也可看普通当前页/截图；操作仍需授权、读取不切页、OAuth临时页不给AI读写或列出。临时接管30秒归还操作权，显式收回持续有效，后台不自行撤销。
+- 保持官方DSH UI/模型/Skills与TLS/哈希/审批；PRoot不是恶意代码沙箱。API Key保存继续暂停，不调查/导出真实凭据。
 
-## 暂停与未验收
+## 未验与已知问题
 
-- **API Key保存继续由用户暂停**，不调查或导出真实凭据。
-- 真实账号/模型、MIUI真机、低API渲染、长期后台与大量标签内存压力未本轮验证。
-- 完整Ubuntu/Node/DSH会话跨APK覆盖、弱网首次安装与锁缓存设备路径、进程死亡后的安装授权期限恢复仍待验；具体历史边界保留在测试现状。
-- 既有浏览器退出全屏 `systemBars()` 断言未修复，不计入通过数；正式密钥/签名迁移及发布后更新安装全链不视为已验收。
+真实账号/模型、MIUI真机、低API渲染、长期后台/大量复杂标签压力，完整Ubuntu/Node/DSH跨APK覆盖、弱网设备缓存路径及进程死亡后的安装授权期限恢复仍待验。既有浏览器退出全屏systemBars断言未修复，不可算通过；正式签名/迁移和发布后的实际更新安装链未全面验收。
 
-## 产物与下一步
+## 产物与交接
 
-- 本轮仅刷新 `artifacts/sources/Tanuki-0.1.4-source.zip` 和外部SHA，测试APK/日志留忽略目录；正常Studio输出恢复但不安装。
-- 上游0.1.4开发签名release及六附件事实见测试现状与[取包说明](ARTIFACTS.md)；本轮不重编/替换正式发布目录、不建tag/Release。
-- 普通推送本功能分支后等待用户审阅；未来发布仍先确认版本，按[发布流程](RELEASE.md)执行。
+本轮先测试和文档/过期交接清理，一次commit/push后用verified-apk与已测SHA封装artifacts/releases/0.1.5六附件；不自动创建tag/上传Release。源码准备区跟随当前工作树，不改写旧release；发布入口见[取包说明](ARTIFACTS.md)和[发布流程](RELEASE.md)。PR作者1535冲突过程已完成，独有验证事实补入TEST-REPORT作者历史节后删除；当前记录保留清理依据。
+
+另一个会话的DSH文件管理运行限制记录20261103-1937-files-runtime-question.md此前尚未落盘，仅保留待确认提示，不作为本轮测试依据。

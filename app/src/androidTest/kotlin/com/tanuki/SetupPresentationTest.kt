@@ -867,12 +867,8 @@ class SetupPresentationTest {
             beforeShot = run { SystemClock.sleep(300); screenshot("setup-webview-before.png") }
             assertTrue(before.w > 0 && before.h > 0 && boundsOf(web).width() > 0 && boundsOf(web).height() > 0)
             val navigation = glassTabBounds("文件")
-            assertTrue("DSH must extend behind the floating navigation", boundsOf(web).contains(navigation))
-            // 合成网页的中间绿带应透过未选页签；避开图标、文字和边缘高光。
-            val pixel = beforeShot!!.getPixel(navigation.centerX(), navigation.top + (2 * context.resources.displayMetrics.density).toInt())
-            assertTrue("DSH document pixels must show through the navigation",
-                android.graphics.Color.green(pixel) > android.graphics.Color.red(pixel) + 30 &&
-                    android.graphics.Color.green(pixel) > android.graphics.Color.blue(pixel) + 30)
+            assertTrue("DSH viewport must end above the floating navigation", boundsOf(web).bottom <= navigation.top)
+            assertTrue("DSH document must actually paint inside its safe viewport", hasDocumentPixels(beforeShot!!, web))
             click("进入全屏"); find("退出全屏")
             val full = awaitViewport(web) { it.h > before.h }
             fullShot = run { SystemClock.sleep(300); screenshot("setup-webview-fullscreen.png") }
@@ -895,6 +891,33 @@ class SetupPresentationTest {
             assertEquals("timeOrigin must not change after exiting fullscreen", origin, after.timeOrigin, 0.0)
         } finally { beforeShot?.recycle(); fullShot?.recycle(); afterShot?.recycle(); cleanup(activity) }
     }
+    @Test fun fixedBottomDshControlsAcceptRealTouchesWithoutChangingNavigation() {
+        val activity = launch(); cancelSourceTests()
+        try {
+            val browser = browserOf(activity); awaitProbe(browser)
+            val web = browser.view
+            val state = mutableStateOf(model(snapshot = runningSnapshot()))
+            mount(activity, state, Recorder(), web, night = false, fontScale = 1f)
+            click("DSH"); awaitAttached(activity, web)
+            loadHtml(web, FixedBottomControlsFixture.HTML, "typeof window.__fixedBottomEvents==='object'")
+            instrumentation.waitForIdleSync(); SystemClock.sleep(300)
+            assertTrue("DSH navigation must be selected before the touch", glassTab("DSH").isSelected)
+            screenshot("dsh-fixed-bottom-before.png").recycle()
+            for ((id, event) in listOf("fixed-send" to "send", "fixed-more" to "more", "fixed-input" to "focus")) {
+                val geometry = requireNotNull(evalObject(web, "(()=>{const r=document.getElementById('$id').getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2,w:innerWidth,h:innerHeight}})()"))
+                var screen = Rect()
+                instrumentation.runOnMainSync { screen = boundsOf(web) }
+                val x = screen.left + geometry.getDouble("x").toFloat() * screen.width() / geometry.getDouble("w").toFloat()
+                val y = screen.top + geometry.getDouble("y").toFloat() * screen.height() / geometry.getDouble("h").toFloat()
+                // 只读坐标后触摸屏幕中心；只读输入框可验证焦点，避免软键盘改变本用例的导航布局。
+                GlassTouch(x, y).use { touch -> SystemClock.sleep(60); touch.finish() }
+                val count = evalObject(web, "window.__fixedBottomEvents")?.optInt(event, -1)
+                val selected = glassTab("DSH").isSelected
+                assertTrue("Fixed-bottom $id must receive its center touch ($x,$y), event=$count, dshSelected=$selected", count == 1 && selected)
+            }
+        } finally { cleanup(activity) }
+    }
+
     @Test fun filesListExtendsBehindNavigationAndScrollsTailClearWithoutReloadingDsh() {
         val activity = launch(); cancelSourceTests()
         var overlapShot: Bitmap? = null; var tailShot: Bitmap? = null

@@ -234,11 +234,12 @@ fun AgentBrowserPage(controller: AgentBrowserController, modifier: Modifier = Mo
                         view.setLayerType(if (fullscreen) android.view.View.LAYER_TYPE_HARDWARE else originalLayer, null)
                         onDispose { view.setLayerType(originalLayer, null) }
                     }
+                    // 网页视口避开浮动导航，不能让固定在页面底部的输入框或按钮被原生页签截获。
                     AndroidView(factory = { viewContext ->
                         (view.parent as? ViewGroup)?.removeView(view)
                         view.importantForAccessibility = android.view.View.IMPORTANT_FOR_ACCESSIBILITY_AUTO
                         FrameLayout(viewContext).apply { clipChildren = true; clipToPadding = true; addView(view, FrameLayout.LayoutParams(-1, -1)) }
-                    }, onRelease = { host -> controller.park(view, host) }, modifier = Modifier.fillMaxSize().clipToBounds())
+                    }, onRelease = { host -> controller.park(view, host) }, modifier = Modifier.fillMaxSize().padding(bottom = bottomInset).clipToBounds())
                 }
                 if (state.overlayFrame == null && state.url.isEmpty() && !state.rendererFailed) Column(Modifier.fillMaxSize().padding(bottom = bottomInset).verticalScroll(rememberScrollState()).padding(24.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically), horizontalAlignment = Alignment.CenterHorizontally) {

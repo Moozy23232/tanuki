@@ -672,13 +672,14 @@ private fun DshPage(model: TanukiUiModel, c: TanukiUiCallbacks, browser: WebView
     Box(modifier.fillMaxSize().imePadding()) {
         // One stable document and bounded native host in both window modes: no reload.
         if (s.web != WebState.RENDER_ERROR) key(browser) {
+            // 正常模式预留导航及其间隙；键盘或全屏隐藏导航时 bottomInset 为零。
             AndroidView(factory = { context ->
                 android.widget.FrameLayout(context).apply {
                     clipChildren = true; clipToPadding = true
                     (browser.parent as? ViewGroup)?.removeView(browser)
                     addView(browser, android.widget.FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
                 }
-            }, modifier = Modifier.fillMaxSize().padding(top = topInset).clipToBounds(),
+            }, modifier = Modifier.fillMaxSize().padding(top = topInset, bottom = bottomInset).clipToBounds(),
                 update = {
                     browser.visibility = if (showBrowser) android.view.View.VISIBLE else android.view.View.INVISIBLE
                 })

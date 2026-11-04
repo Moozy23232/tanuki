@@ -99,6 +99,82 @@ class FilesBrowserPresentationTest {
             assertTrue("$label exists in accessibility but is not visibly painted (${colors.size} colors)", colors.size > 8)
         } finally { image.recycle() }
     }
+    /** 前往已改成箭头；核验实际图形和对比，不能套用文字抗锯齿的颜色数量。 */
+    private fun assertRenderedGoIcon(expectedEnabled: Boolean, expectedAddress: String = "") {
+        // Icon子节点不合并按钮的disabled语义；启用状态取最近的按钮祖先，像素仍取图标边界。
+        var settledNode: AccessibilityNodeInfo? = null
+        var actualAddress: String? = null
+        var actualEnabled: Boolean? = null
+        var ancestry = arrayListOf<String>()
+        val deadline = SystemClock.elapsedRealtime() + 3000
+        while (SystemClock.elapsedRealtime() < deadline) {
+            instrumentation.waitForIdleSync()
+            val fresh = nodes()
+            val node = fresh.lastOrNull { matches(it, "前往") && it.isVisibleToUser }
+            val address = fresh.lastOrNull { matches(it, "网址输入框") && it.isVisibleToUser }
+            val addressBounds = address?.let { Rect().also(it::getBoundsInScreen) }
+            val field = fresh.firstOrNull { candidate ->
+                candidate.isEditable && candidate.isVisibleToUser && addressBounds?.let { area ->
+                    val r = Rect().also(candidate::getBoundsInScreen)
+                    area.contains(r.centerX(), r.centerY())
+                } == true
+            }
+            actualAddress = field?.let { it.text?.toString().orEmpty() }
+            var current: AccessibilityNodeInfo? = node
+            var button: AccessibilityNodeInfo? = null
+            ancestry = arrayListOf()
+            while (current != null && ancestry.size < 10) {
+                val candidate = current
+                if (!candidate.refresh()) break
+                ancestry += "${candidate.className}:enabled=${candidate.isEnabled},clickable=${candidate.isClickable}"
+                if (candidate.isClickable || candidate.actionList.any { it.id == AccessibilityNodeInfo.ACTION_CLICK } ||
+                    !candidate.isEnabled || candidate.className?.toString() in setOf("android.widget.Button", "android.widget.ImageButton")) {
+                    button = candidate; break
+                }
+                current = candidate.parent
+            }
+            actualEnabled = button?.isEnabled
+            // 输入动作和Compose语义更新异步；轮询新树，必须同时观察到原URL和按钮状态，不能只多等固定时长。
+            if (node != null && actualAddress == expectedAddress && actualEnabled == expectedEnabled) {
+                settledNode = node; break
+            }
+            SystemClock.sleep(50)
+        }
+        if (settledNode == null) {
+            screenshot("browser-go-icon-state-failure.png")
+            fail("前往状态未收敛：expectedAddress=$expectedAddress, actualAddress=$actualAddress, expectedEnabled=$expectedEnabled, actualEnabled=$actualEnabled, ancestors=$ancestry")
+        }
+        assertEquals("地址输入必须保留合成URL", expectedAddress, actualAddress)
+        assertEquals("空地址禁用前往，输入地址后启用", expectedEnabled, actualEnabled)
+        val bounds = Rect().also(checkNotNull(settledNode)::getBoundsInScreen)
+        instrumentation.waitForIdleSync(); SystemClock.sleep(350)
+        val image = requireNotNull(instrumentation.uiAutomation.takeScreenshot())
+        try {
+            assertTrue("前往完整位于屏幕内", bounds.width() > 0 && bounds.height() > 0 && bounds.left >= 0 && bounds.top >= 0 && bounds.right <= image.width && bounds.bottom <= image.height)
+            // 无障碍可能报告整个48dp按钮；只检查居中的20dp实际图标区域。
+            val size = (20 * context.resources.displayMetrics.density).toInt()
+            val icon = Rect(bounds.centerX() - size / 2, bounds.centerY() - size / 2,
+                bounds.centerX() - size / 2 + size, bounds.centerY() - size / 2 + size)
+            assertTrue("前往的20dp图标不能被裁切", bounds.contains(icon))
+            fun pixel(x: Float, y: Float) = image.getPixel(icon.left + (x * size).toInt(), icon.top + (y * size).toInt())
+            val background = pixel(0.08f, 0.08f)
+            fun contrast(x: Float, y: Float): Int {
+                val color = pixel(x, y)
+                return maxOf(kotlin.math.abs(android.graphics.Color.red(color) - android.graphics.Color.red(background)),
+                    kotlin.math.abs(android.graphics.Color.green(color) - android.graphics.Color.green(background)),
+                    kotlin.math.abs(android.graphics.Color.blue(color) - android.graphics.Color.blue(background)))
+            }
+            // 探针位于箭杆、箭尖和上下斜边的内部；纯色覆盖或只剩语义节点都不能通过。
+            for ((x, y) in listOf(0.30f to 0.50f, 0.55f to 0.50f, 0.78f to 0.50f, 0.60f to 0.31f, 0.60f to 0.69f)) {
+                assertTrue("前往箭头在($x,$y)必须实际绘制且可辨，contrast=${contrast(x, y)}", contrast(x, y) >= 24)
+            }
+            assertTrue("箭头左上、左下必须保留背景，不能把整块前景当作图标",
+                contrast(0.25f, 0.25f) < 24 && contrast(0.25f, 0.75f) < 24)
+        } catch (error: AssertionError) {
+            File(context.cacheDir, "browser-go-icon-failure.png").outputStream().use { image.compress(Bitmap.CompressFormat.PNG, 100, it) }
+            throw error
+        } finally { image.recycle() }
+    }
     private fun input(value: String) {
         val field = nodes().first { it.isEditable && it.isVisibleToUser }
         assertTrue(field.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, Bundle().apply {
@@ -204,15 +280,15 @@ class FilesBrowserPresentationTest {
             AgentBrowserControlTest.LocalPage().use { page ->
                 click("浏览器")
                 ui { controller.revoke(); fixtureTab = controller.newTab() }
-                assertRenderedText("网址输入框"); assertRenderedText("前往")
+                assertRenderedText("网址输入框"); assertRenderedGoIcon(expectedEnabled = false)
                 screenshot("browser-address-empty.png")
                 tap("网址输入框")
                 assertTrue("Touch must reach the address field, not an overlapping WebView", nodes().any { it.isEditable && it.isFocused })
-                input(page.url); screenshot("browser-address-keyboard.png")
+                input(page.url); assertRenderedGoIcon(expectedEnabled = true, expectedAddress = page.url); screenshot("browser-address-keyboard.png")
                 tap("前往")
                 await { controller.state.value.url == page.url && !controller.state.value.loading }
                 find("Browser fixture")
-                assertRenderedText("网址输入框"); assertRenderedText("前往")
+                assertRenderedText("网址输入框"); assertRenderedGoIcon(expectedEnabled = true, expectedAddress = page.url)
                 screenshot("browser-address-loaded.png")
                 tap("网址输入框")
                 try {
@@ -255,7 +331,7 @@ class FilesBrowserPresentationTest {
                     }
                 }
             }
-            assertRenderedText("网址输入框"); assertRenderedText("前往")
+            assertRenderedText("网址输入框"); assertRenderedGoIcon(expectedEnabled = false)
             screenshot("browser-address-dark-font200.png")
             tap("网址输入框")
             assertTrue(nodes().any { it.isEditable && it.isFocused })

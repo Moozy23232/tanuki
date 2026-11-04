@@ -2,10 +2,60 @@
 
 Tanuki验证目标：`com.tanuki.modern.workspacecheck`，命名空间 `com.tanuki`，ARM64、minSdk26/targetSdk34。debug/release构建与证书、宿主与设备执行必须分别记录，源码中有测试不等于已运行。
 
+## v0.1.5/7 PR #3 release 验证（2026-11-04）
+
+- 用户明确测试正常后push并打包0.1.5。固定[PR #3](https://github.com/leezzou/tanuki/pull/3) head `c95fa9fcc80a78489a1bc2d7fc5710dfbe30857a`，merge-base为最新main `a2a591331100e94b8425d7b7c9d31019f459827c`，ahead6/behind0；远端Git引用复核一致。列表缓存曾返回旧PR #2，匿名API失败，改用独立PR页面与Git refs确认。保持0.1.4的上传/AI只读修复，默认版本改0.1.5/code7，高于公开清单与已安装最高6。
+- 新增真实触摸回归先复现 **浏览器与DSH底部按钮均被原生浮动导航拦截、误切页（2失败，23.891秒）**。修复仅给两个AndroidView预留bottomInset，含导航、间隙与系统区域；键盘/全屏/宽屏无浮动导航时为零。保留同一WebView，不改官方DSH、完整截图开关或权限；旧网页透显断言改为安全视口实际绘制，两项真实触摸断言保持。
+- 原候选release/AndroidTest、compat debug、release JVM/lint构建4分39秒成功；修复后同命令再构建 **3分12秒成功**。最终 **release JVM97项，0失败/错误/跳过；release lint0错误/71警告/1Hint**。宿主发布18项（5.679秒）、工作流12项（28.474秒）、公开边界19项（14.171秒）通过，49项不与JVM或设备混计。
+- 最终实际APK `com.tanuki.modern.workspacecheck`，0.1.5/code7、ARM64、min26/target34、non-debuggable，**10,370,132字节**；SHA-256 `a21a8ae304c08857b1881f17668f442cab461d14c3c283208ecd5e4aa12dbdf2`，开发证书 `371dc301e7bb4d5cb2840510855f191eeb2f1ce4d058618361419409654cd84f`。app/test包名与instrumentation target一致，同证书覆盖；两provider独立/非导出，DEX父类与各自路径资源核对。依赖相对main无变化；APK内62项许可资产逐字节一致、79条记录/78个坐标、Kyant两NOTICE及共享Apache全文匹配。
+- 复用 `Pixel_7_API_34_arm64 / emulator-5572`、ARM64/API34/WebView159，确认无安装/真实任务，仅合成数据。旧0.1.4/6覆盖前种私有标记 **1项通过，4.938秒**，没有在覆盖后重种。原失败候选上15个真实HTTP页面的草稿/文档保留、只读RPC、关闭13页恢复与按需加载 **生命周期2项通过8.521秒**；该数字不代替最终APK结果。
+- 最终APK重点 **4项通过，48.044秒**：浏览器/DSH的fixed-bottom输入焦点和两个按钮接受真实屏幕触摸且不误切页、紧凑标题/地址同行/安全视口实际像素、DSH全屏同文档/真实像素。关联53项首跑 **51通过/2失败，318.326秒**，两项地址栏旧测试把20dp箭头仍按文字颜色数量检测，7/8色误判。仅适配测试为箭头形状/对比/留白、真实URL与按钮状态同时收敛；原真实触摸导航、首焦全选/再次点击光标断言保留。test-only编译35/42/39秒；前两次复测因子节点未合并disabled语义（2失败，12.292秒）及祖先缓存未刷新（1通过/1失败，11.617秒），改为有界新树/祖先refresh轮询后，最终 **2项通过20.282秒**。产品APK字节始终不变，按方法集合去重 **57个不同用例最终全部通过**，无跳过/host timeout/仪器中断；覆盖前私有标记读回原值后清理，不重种。
+- 独立APK检查最初误把apkanalyzer数值资源ID当作XML名称，改读APK资源表后通过；一次source误用zsh改bash，未改APK。交接初次刷新因PR压缩STATE标题后未插入当前记录链接失败，补链接后通过；不计作产品失败/成功。候选APK公开扫描0发现，旧0.1.4六附件SHA全部通过且不改写。8张专用合成截图视觉检查：底部控件完整露出、紧凑工具实际绘制、全屏页面满幅无空白、普通/暗色200%地址栏可达；键盘截图导航在IME上方，输入可用，不宣称导航必定收起；不据截图宣称旧系统栏边界已修复。公开边界19项在交接清理后复跑通过（1.332秒），不重复累计49项宿主数量。
+- 未验：MIUI真机、真实账号/模型、完整Ubuntu/Node/DSH运行环境跨APK升级、弱网/低API、长期后台及大量复杂标签资源压力、安装授权期限进程死亡恢复。既有浏览器退出全屏systemBars断言未修复且不在本轮通过范围；API Key保存继续暂停。15个小页面回归不能证明任意数量复杂标签的资源安全。
+
+### v0.1.5 可复现的57项选择
+
+配置JDK17/SDK后实际构建命令：
+
+```bash
+source scripts/env.sh
+./gradlew -PtestBuildType=release -PdevelopmentReleaseSigning=true \
+  -PtanukiVersionName=0.1.5 -PtanukiVersionCode=7 \
+  -I scripts/workspace-verification.init.gradle \
+  :app:assembleModernRelease :app:assembleCompatDebug :app:assembleModernReleaseAndroidTest \
+  :app:testModernReleaseUnitTest :app:lintModernRelease
+```
+
+核对APK身份后，明确serial、串行 `adb -s emulator-5572 install -r <app.apk>` 与配套AndroidTest；按下列选择拆为4项重点与53项关联：`adb -s emulator-5572 shell am instrument -w -r -e class <逗号分隔的类或类#方法> -e verifyUpgradeMarker true com.tanuki.modern.workspacecheck.test/androidx.test.runner.AndroidJUnitRunner`。标记验证只在关联组执行；旧包先种，再覆盖、读原值并清理，不直接复跑删除后的标记。
+
+整类：`DshFileUploadTest`（5）、`AgentBrowserControlTest`（14）、`WebAuthenticationTest`（2）、`DshViewportTest`（1）、`BlobDownloadTest`（1）、`ApkInstallAccessTest`（5）、`FilesBrowserPresentationTest`（5）、`ApplicationUpdateNativeTest`（3）、`ApplicationUpdatePresentationTest`（1）、`BrowserTabLifecycleTest`（2）。另选以下方法，完整类名前缀为 `com.tanuki.`：
+
+```text
+BrowserWorkspacePresentationTest#compactChromeSharesTitleRowAndWebViewportClearsNavigation
+BrowserWorkspacePresentationTest#fixedBottomHttpControlsAcceptRealTouchesWithoutChangingNavigation
+BrowserWorkspacePresentationTest#revokedAiKeepsDshBrowserEntryAndUserPageVisible
+BrowserWorkspacePresentationTest#defaultConnectionAndTouchTakeoverSurviveBackgroundAndRecreation
+BrowserWorkspacePresentationTest#tabOverviewCanCreateBeyondTwelveWithAnAccessibleBadge
+BrowserWorkspacePresentationTest#multiPageOverviewBookmarksAndHistoryUseNativeControls
+BrowserWorkspacePresentationTest#emptyBrowserCanExitFullscreenWithoutFocusingAMissingAddressField
+BrowserWorkspacePresentationTest#displayModesSearchFindZoomCaptureAndDownloadAreUsable
+BrowserOverlayPresentationTest#revokedAiCanStillOpenAndViewBrowserOverlay
+BrowserOverlayPresentationTest#fullDocumentAndAiZoomAreIndependentOfSmallWindow
+BrowserOverlayPresentationTest#displayDensityKeepsCollapsedControlsReachableAndNotificationStopIsFinal
+SetupPresentationTest#glassNavigationBlursPixelsAndKeepsTabsClickable
+SetupPresentationTest#glassNavigationDragPreviewsThenCommitsOnceAndCancels
+SetupPresentationTest#glassNavigationNullBackdropDragsInRtlAndKeepsLargeTabsClickable
+SetupPresentationTest#actualDshWebViewSurvivesFullscreenWithoutReload
+SetupPresentationTest#fixedBottomDshControlsAcceptRealTouchesWithoutChangingNavigation
+SetupPresentationTest#filesListExtendsBehindNavigationAndScrollsTailClearWithoutReloadingDsh
+SetupPresentationTest#setupGuideFirstStepSourceVersionAndLocalThemeScreenshots
+```
+
 ## PR #3 合并验证（2026-11-04，debug）
 
 - 将main/a2a5913合入浏览器分支，保留上传、AI查看/操作分离和浏览器布局/浮动导航/标签改动。双debug、AndroidTest、97 JVM通过；modern lint0错误/71警告/1提示。
-- `Tanuki_UI_API36` / `emulator-5554`，独立 `com.tanuki.modern.uipolish.workspacecheck`、0.1.4/6，**22项全过，256.2秒**：查看/操作/私有页/30秒/15页恢复5，上传5，完整浏览器4，小窗/整页2，地址栏2，DSH/文件列表/导航拖动4；无失败、跳过或超时。正常开发包未覆盖；选择和边界见[当前交接](handoffs/20261104-1535-pr3-conflicts.md)。
+- `Tanuki_UI_API36` / `emulator-5554`，独立 `com.tanuki.modern.uipolish.workspacecheck`、0.1.4/6，**22项全过，256.2秒**：查看/操作/私有页/30秒/15页恢复5，上传5，完整浏览器4，小窗/整页2，地址栏2，DSH/文件列表/导航拖动4；无失败、跳过或超时。正常开发包未覆盖；本节为作者历史验证，不计作0.1.5本轮结果。
+- 作者独立init只将debug后缀改为 `.uipolish.workspacecheck`，WebView133；工作流12项、公开边界19项通过。删交接后曾因记录文字未变而印章拒绝，补实际删除说明后通过；Studio普通包仅编译/核验，未安装。
 - 合并前浏览器分支d3aedc6保留三笔提交：e724ef5紧凑地址/首焦全选、68d9487全页浮动、d3aedc6图标角标/取消12页截断。0.1.3组合版本先有97 JVM/15项布局回归；标签调整后另有97 JVM/11项专项，lint均0/71/1，不与本轮累计。包含文件编辑复制、下载/截图、授权/重建、实际像素和文档保留，文件尾部用合成列表验证。
 - 旧布局/12页限制曾被新增回归先复现；漏Column导入、实验IME接口、输入节点标签屏蔽选择范围、查找滚过目标、误点同名标题和无障碍点击不算真实弹窗手势均已修正后复测，不把中间失败或重复运行计入通过数。源码与当前设备用例保留，旧过程记录删除。
 - 真机/低API/真实DSH任务/长期及大量标签压力未验；既有退出全屏系统栏断言仍排除，API Key保存继续暂停。本轮不是正式release验收。

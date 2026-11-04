@@ -30,18 +30,18 @@
 
 ## 发布者必须提供什么
 
-未来用户说「发布」时，Agent **先问版本号**（已经明确则不重复问），确认递增的 `versionCode` 和渠道后再打包。本次用户确认 `v0.1.4`，对应 `versionName=0.1.4` / `versionCode=6`，沿用原workspacecheck开发证书。打包、源码提交/推送、创建 tag、上传 Release 是不同授权；本次只在本地准备附件，Release 由用户发布。
+未来用户说「发布」时，Agent **先问版本号**（已经明确则不重复问），确认递增的 `versionCode` 和渠道后再打包。本次用户确认 `v0.1.5`，对应 `versionName=0.1.5` / `versionCode=7`，沿用原workspacecheck开发证书。打包、源码提交/推送、创建 tag、上传 Release 是不同授权；本次授权测试正常后push并在本地准备附件，Release由用户发布。
 
 ```bash
 source scripts/env.sh
-python3 scripts/prepare-app-release.py --version 0.1.4 --version-code 6 --channel workspacecheck
+python3 scripts/prepare-app-release.py --version 0.1.5 --version-code 7 --channel workspacecheck
 ```
 
-脚本验证实际 APK 包名、版本、SDK、证书和文件字节，生成 `artifacts/releases/0.1.4/`：
+脚本验证实际 APK 包名、版本、SDK、证书和文件字节，生成 `artifacts/releases/0.1.5/`：
 
-- `Tanuki-0.1.4-workspacecheck-arm64-release.apk`：开发证书、non-debuggable 的测试发布包；GitHub 应标 Pre-release。
-- **`app-update.json`**：脚本生成的更新清单，必须与 APK 上传到 tag `v0.1.4` 的同一个 Release，不能只上传 APK。
-- `RELEASE-SHA256SUMS`、完整 `Tanuki-0.1.4-source.zip`、原生对应源码与校验文件。
+- `Tanuki-0.1.5-workspacecheck-arm64-release.apk`：开发证书、non-debuggable 的测试发布包；GitHub 应标 Pre-release。
+- **`app-update.json`**：脚本生成的更新清单，必须与 APK 上传到 tag `v0.1.5` 的同一个 Release，不能只上传 APK。
+- `RELEASE-SHA256SUMS`、完整 `Tanuki-0.1.5-source.zip`、原生对应源码与校验文件。
 
 清单结构为 `schemaVersion:1` / `packages` 数组，每个包包含 `packageName`、`versionName`、整数 `versionCode/minSdk/bytes`、`assetName`、`sha256`、`certificateSha256`。不要把文档示例或其他包/版本的元数据当成实际附件。更换/重打 APK 后必须重跑生成和外部散列检查。
 
